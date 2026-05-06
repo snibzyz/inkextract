@@ -38,6 +38,17 @@ def test_ensure_dirs_creates_workspace():
         assert d.exists(), f"missing: {d}"
 
 
+def test_every_data_dir_has_gitkeep_for_clone_users():
+    """กัน regression — ทุก folder ใน ALL_DATA_DIRS ต้องมี .gitkeep
+    ไม่งั้น user ที่ clone จาก git แล้วเปิดโปรแกรมก่อนอะไรจะ trigger
+    ensure_dirs() จะเห็นโฟลเดอร์ไม่ครบ."""
+    missing = [d for d in paths.ALL_DATA_DIRS if not (d / ".gitkeep").exists()]
+    assert not missing, (
+        f"missing .gitkeep in {len(missing)} folder(s): "
+        f"{[str(d.relative_to(paths.ROOT)) for d in missing]}"
+    )
+
+
 if __name__ == '__main__':
     import inspect
     tests = [(n, f) for n, f in inspect.getmembers(sys.modules[__name__])
