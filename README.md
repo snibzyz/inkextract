@@ -20,38 +20,15 @@
 
 ---
 
-### 🔴 ขั้นที่ 2 — ติดตั้ง Git (จำเป็นถ้าอยาก auto-update)
+### 🟠 ขั้นที่ 2 — ดาวน์โหลดโปรแกรม
 
-ไปดาวน์โหลดที่:
-
-👉 **https://git-scm.com/downloads**
-
-ติดตั้งแบบ default ทุกอย่างได้เลย — ไม่ต้องเปลี่ยนอะไร
-
-> ไม่ติดตั้ง git ก็ใช้งานโปรแกรมได้ แต่จะไม่ได้รับ update อัตโนมัติ
+1. ไปที่ https://github.com/snibzyz/inkextract/releases/latest
+2. กด **`Source code (zip)`** เพื่อดาวน์โหลด
+3. แตกไฟล์ ZIP ออกมาไว้ที่ไหนก็ได้
 
 ---
 
-### 🟠 ขั้นที่ 3 — ดาวน์โหลดโปรแกรม
-
-#### วิธี A: Clone จาก GitHub (แนะนำ — ได้ auto-update)
-
-เปิด `cmd` หรือ PowerShell พิมพ์:
-
-```bash
-git clone https://github.com/snibzyz/inkextract.git
-cd inkextract
-```
-
-#### วิธี B: Download ZIP
-
-1. ไปที่ https://github.com/snibzyz/inkextract
-2. กดปุ่มเขียว **`Code`** → **`Download ZIP`**
-3. แตกไฟล์ ZIP ออกมา
-
----
-
-### 🟠 ขั้นที่ 4 — ติดตั้งโปรแกรม
+### 🟠 ขั้นที่ 3 — ติดตั้งโปรแกรม
 
 | ระบบ | ไฟล์ที่ต้องดับเบิลคลิก |
 |------|----------------------|
@@ -73,7 +50,7 @@ cd inkextract
 
 เบราว์เซอร์จะเปิดขึ้นมาอัตโนมัติ — ถ้าไม่เปิดเองให้คัดลอก URL ที่ขึ้นในหน้าต่าง terminal ไปวางในเบราว์เซอร์
 
-> 🔄 **Auto-update**: ถ้า clone จาก git ไว้ โปรแกรมจะเช็ค update จาก GitHub ทุกครั้งที่เปิด — ดึงให้อัตโนมัติถ้ามีของใหม่
+> 🔄 **Auto-update**: โปรแกรมจะเช็ค update จาก GitHub ทุกครั้งที่เปิด — ดาวน์โหลดและติดตั้งให้อัตโนมัติถ้ามีของใหม่ **ไม่ต้องมี Git**
 
 ---
 
@@ -129,17 +106,15 @@ workspace/
 | ติดตั้งแล้วเปิดไม่ได้ | ลบโฟลเดอร์ `.venv` แล้วรัน `ติดตั้ง.bat` ใหม่ |
 | Mac บอกว่าเปิดไม่ได้ | คลิกขวาที่ไฟล์ `.command` → Open → Open |
 | `python` ไม่เจอ | ติดตั้ง Python ใหม่ — ติ๊ก `Add Python to PATH` |
-| `git` ไม่เจอ | ติดตั้ง Git ที่ https://git-scm.com/downloads |
-| Auto-update ไม่ทำงาน | ตรวจว่ามี `.git/` ในโฟลเดอร์ + มี git ใน PATH |
+| Auto-update ไม่ทำงาน | เช็คว่าเครื่องต่ออินเทอร์เน็ตอยู่ |
 
 ---
 
 ## ข้อกำหนดระบบ
 
 - **Python 3.10+** — https://www.python.org/downloads/ ⚠ ต้องติ๊ก "Add Python to PATH"
-- **Git** (optional — ถ้าอยาก auto-update) — https://git-scm.com/downloads
 - Windows 10/11 หรือ macOS 10.15+
-- อินเทอร์เน็ต (ตอนติดตั้งครั้งแรก)
+- อินเทอร์เน็ต (ตอนติดตั้งครั้งแรก และตรวจ update)
 
 ---
 
