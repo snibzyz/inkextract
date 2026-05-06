@@ -297,21 +297,31 @@ def render(proofreader, file_processor) -> None:
                 st.session_state.export_confirm = False
 
             if not st.session_state.export_confirm:
-                if st.button(" **ส่งออกเพื่อแก้ไข**", disabled=export_disabled, width='stretch'):
+                if st.button("**ส่งออกเพื่อแก้ไข**", disabled=export_disabled, width='stretch'):
                     st.session_state.export_confirm = True
                     st.rerun()
             else:
-                st.warning(" ต้องการส่งออกไฟล์ error_trans.txt หรือไม่?")
+                st.warning("ต้องการส่งออกไฟล์ error_trans.txt หรือไม่?")
+
+                # ตัวเลือกแบ่งไฟล์ — กัน token limit ของ AI
+                chunk_size = st.number_input(
+                    "แบ่งเป็นหลายไฟล์ (chunk size) — 0 = ไฟล์เดียว",
+                    min_value=0, max_value=2000, step=10, value=0,
+                    help="ถ้า > 0 จะแบ่งเป็น error_trans_001.txt, _002.txt, ... "
+                         "(ต่อไฟล์ละ N รายการ) เพื่อกัน token limit ตอนส่งให้ AI",
+                    key="export_chunk_size",
+                )
+
                 col_yes, col_no = st.columns(2)
                 with col_yes:
-                    if st.button(" ยืนยัน", type="primary", width='stretch'):
+                    if st.button("ยืนยัน", type="primary", width='stretch'):
                         with st.spinner("กำลังส่งออก..."):
-                            proofreader.export_errors()
+                            proofreader.export_errors(chunk_size=int(chunk_size))
                         st.session_state.export_confirm = False
                         st.toast("ส่งออกสำเร็จ!")
                         st.rerun()
                 with col_no:
-                    if st.button(" ยกเลิก", width='stretch'):
+                    if st.button("ยกเลิก", width='stretch'):
                         st.session_state.export_confirm = False
                         st.rerun()
 

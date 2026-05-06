@@ -207,7 +207,62 @@ class NovelProofreader:
             if len(normalized_matches) == 1:
                 return normalized_matches[0], 'normalized'
 
+        # ===== Fuzzy fallback (2026-05-06) =====
+        # ลำดับก่อนหน้านี้ match แบบ strict: ต้องตรง file+line ด้วย exact/normalized
+        # ถ้ายังจับคู่ไม่ได้ (line number เพี้ยน, ชื่อไฟล์ผิด, [A] ขาดบางคำ) →
+        # ลอง bigram similarity ทั่วทุก error
+        fuzzy_target = self._fuzzy_find_import_target(current_file, line_number, imported_a)
+        if fuzzy_target is not None:
+            return fuzzy_target, 'fuzzy'
+
         return self._bootstrap_import_target(current_file, line_number, imported_a)
+
+    def _fuzzy_find_import_target(
+        self,
+        current_file: str,
+        line_number: int,
+        imported_a: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Fuzzy match — bigram similarity ≥ 0.85 across all errors.
+
+        ใช้เมื่อ exact/normalized match ไม่ได้ — เช่น user แก้บรรทัดเลขใหม่,
+        ชื่อไฟล์ผิด, หรือ AI ตัด [A] ทิ้งบางส่วน
+        """
+        if not imported_a or not self.found_errors:
+            return None
+        try:
+            from modules.fuzzy_matcher import (
+                build_exact_index, find_best_error_by_a,
+                normalize_import_text, strip_ab_prefix,
+            )
+        except Exception:
+            return None
+
+        # แปลง self.found_errors → format ที่ fuzzy_matcher ใช้
+        candidates = []
+        for err in self.found_errors:
+            candidates.append({
+                'original_a': err.get('original_A', ''),
+                'file_name': Path(err.get('file_path', '')).name,
+                'file_path': err.get('file_path', ''),
+                'line_number': err.get('line_number_B', 0),
+                '_orig_ref': err,  # reference back to original dict
+            })
+
+        idx = build_exact_index(candidates)
+        needle = normalize_import_text(strip_ab_prefix(imported_a, 'A'))
+
+        result = find_best_error_by_a(
+            needle_normalized_a=needle,
+            exact_index=idx,
+            all_errors=candidates,
+            hint_file_name=current_file,
+            hint_line_number=line_number,
+            min_ratio=0.85,
+        )
+        if result is None:
+            return None
+        return result['error']['_orig_ref']
 
     def _find_input_file_by_name(self, file_name: str) -> Optional[Path]:
         normalized_target = self._normalize_import_filename(file_name)
@@ -1001,68 +1056,94 @@ class NovelProofreader:
 ```
 """
     
-    def export_errors(self):
-        """ส่งออกข้อผิดพลาดเป็นไฟล์ error_trans.txt แบบประหยัด token สุดๆ และ export vocab"""
+    def export_errors(self, chunk_size: int = 0):
+        """ส่งออกข้อผิดพลาดเป็นไฟล์ error_trans.txt แบบประหยัด token สุดๆ + export vocab.
+
+        Args:
+            chunk_size: ถ้า > 0 จะแบ่งเป็นหลาย part (error_trans_001.txt, _002, ...)
+                เพื่อกัน token limit ของ AI. 0 = ไฟล์เดียว (default).
+        """
         if not self.found_errors:
             st.warning("⚠️ ไม่มีข้อผิดพลาดให้ส่งออก")
             return
-        
+
         try:
+            from modules.error_chunker import (
+                split_errors_into_parts, build_part_filename
+            )
+
             with st.spinner("กำลังสร้างไฟล์ error_trans.txt..."):
-                # สร้างโฟลเดอร์ output ถ้ายังไม่มี
                 self.output_dir.mkdir(exist_ok=True)
-                error_file_path = self.output_dir / "error_trans.txt"
-                with open(error_file_path, 'w', encoding='utf-8') as f:
-                    f.write("# แก้ไขเฉพาะบรรทัด [B] เท่านั้น\n")
-                    f.write("# รูปแบบ: line_number| แล้วตามด้วย [A] และ [B]\n")
-                    bucket_titles = {
-                        'foreign_and_vocab': 'ภาษาต่างประเทศ,อังกฤษ, เลข + ศัพท์ไม่ตรง วิเคราะห์เพิ่ม',
-                        'foreign_only': 'ภาษาต่างประเทศ,อังกฤษ, เลข',
-                        'vocab_only': 'ศัพท์ไม่ตรง วิเคราะห์เพิ่ม'
-                    }
 
-                    for bucket_key in ['foreign_and_vocab', 'foreign_only', 'vocab_only']:
-                        bucket_errors = [error for error in self.found_errors if error.get('error_bucket') == bucket_key]
-                        if not bucket_errors:
-                            continue
+                # ลบ part files เก่าก่อน (กัน mix old+new)
+                for old in self.output_dir.glob("error_trans_*.txt"):
+                    try:
+                        old.unlink()
+                    except Exception:
+                        pass
 
-                        f.write(f"# ===== {bucket_titles[bucket_key]} ({len(bucket_errors)} รายการ) =====\n")
+                base_name = "error_trans.txt"
+                # แบ่งตาม chunk_size — รักษาลำดับเดิม
+                chunks = split_errors_into_parts(self.found_errors, chunk_size)
+                total_parts = len(chunks)
 
-                        files_dict = {}
-                        for error in bucket_errors:
-                            file_name = Path(error['file_path']).name
-                            if file_name not in files_dict:
-                                files_dict[file_name] = []
-                            files_dict[file_name].append(error)
+                for part_index, chunk_errors in enumerate(chunks):
+                    part_filename = build_part_filename(base_name, part_index, total_parts)
+                    error_file_path = self.output_dir / part_filename
+                    with open(error_file_path, 'w', encoding='utf-8') as f:
+                        if total_parts > 1:
+                            f.write(f"# แก้ไขเฉพาะบรรทัด [B] เท่านั้น (ส่วนที่ {part_index + 1}/{total_parts})\n")
+                        else:
+                            f.write("# แก้ไขเฉพาะบรรทัด [B] เท่านั้น\n")
+                        f.write("# รูปแบบ: line_number| แล้วตามด้วย [A] และ [B]\n")
+                        bucket_titles = {
+                            'foreign_and_vocab': 'ภาษาต่างประเทศ,อังกฤษ, เลข + ศัพท์ไม่ตรง วิเคราะห์เพิ่ม',
+                            'foreign_only': 'ภาษาต่างประเทศ,อังกฤษ, เลข',
+                            'vocab_only': 'ศัพท์ไม่ตรง วิเคราะห์เพิ่ม',
+                        }
 
-                        for file_name, errors in files_dict.items():
-                            f.write(f"## {file_name}\n")
+                        for bucket_key in ['foreign_and_vocab', 'foreign_only', 'vocab_only']:
+                            bucket_errors = [error for error in chunk_errors if error.get('error_bucket') == bucket_key]
+                            if not bucket_errors:
+                                continue
 
-                            unique_missing_pairs = []
-                            seen_missing_pairs = set()
-                            for error in errors:
-                                for item in error.get('missing_vocab_pairs', []):
-                                    pair_key = (item['cn'], item['th'])
-                                    if pair_key not in seen_missing_pairs:
-                                        seen_missing_pairs.add(pair_key)
-                                        unique_missing_pairs.append(pair_key)
+                            f.write(f"# ===== {bucket_titles[bucket_key]} ({len(bucket_errors)} รายการ) =====\n")
 
-                            if unique_missing_pairs:
-                                missing_text = ', '.join(
-                                    [f"{cn} => {th}" for cn, th in unique_missing_pairs]
-                                )
-                                f.write(f"# แปลไม่ตรง วิเคราะห์ว่าควรแก้เป็น => {missing_text} หรือไม่\n")
+                            files_dict = {}
+                            for error in bucket_errors:
+                                file_name = Path(error['file_path']).name
+                                if file_name not in files_dict:
+                                    files_dict[file_name] = []
+                                files_dict[file_name].append(error)
 
-                            for error in errors:
-                                f.write(f"{error['line_number_B']}|\n")
+                            for file_name, errors in files_dict.items():
+                                f.write(f"## {file_name}\n")
 
-                                original_a = self._strip_ab_prefix(error['original_A'], 'A')
-                                f.write(f"[A] {original_a}\n")
+                                unique_missing_pairs = []
+                                seen_missing_pairs = set()
+                                for error in errors:
+                                    for item in error.get('missing_vocab_pairs', []):
+                                        pair_key = (item['cn'], item['th'])
+                                        if pair_key not in seen_missing_pairs:
+                                            seen_missing_pairs.add(pair_key)
+                                            unique_missing_pairs.append(pair_key)
 
-                                original_b = self._strip_ab_prefix(error['original_B'], 'B')
-                                f.write(f"[B] {original_b}\n")
+                                if unique_missing_pairs:
+                                    missing_text = ', '.join(
+                                        [f"{cn} => {th}" for cn, th in unique_missing_pairs]
+                                    )
+                                    f.write(f"# แปลไม่ตรง วิเคราะห์ว่าควรแก้เป็น => {missing_text} หรือไม่\n")
 
-                            f.write("\n")
+                                for error in errors:
+                                    f.write(f"{error['line_number_B']}|\n")
+
+                                    original_a = self._strip_ab_prefix(error['original_A'], 'A')
+                                    f.write(f"[A] {original_a}\n")
+
+                                    original_b = self._strip_ab_prefix(error['original_B'], 'B')
+                                    f.write(f"[B] {original_b}\n")
+
+                                f.write("\n")
 
                 # หลังจากส่งออก error_trans แล้ว ทำการ export คำศัพท์จากไฟล์ input
                 all_vocab = []
@@ -1097,27 +1178,52 @@ class NovelProofreader:
                             vf.write(vocab + "\n")
             
             # แสดงผลลัพธ์การ export
-            st.success(f"✅ Export สำเร็จ! ส่งออก {len(self.found_errors)} รายการ")
-            st.toast(f"✅ Export สำเร็จ! ส่งออก {len(self.found_errors)} รายการ", icon="📤")
+            if total_parts > 1:
+                st.success(
+                    f"Export สำเร็จ — ส่งออก {len(self.found_errors)} รายการ "
+                    f"แบ่งเป็น {total_parts} ไฟล์ (chunk size = {chunk_size})"
+                )
+                st.toast(f"Export {total_parts} ไฟล์สำเร็จ", icon="📤")
+            else:
+                st.success(f"Export สำเร็จ — ส่งออก {len(self.found_errors)} รายการ")
+                st.toast(f"Export สำเร็จ — {len(self.found_errors)} รายการ", icon="📤")
         
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาดในการส่งออกไฟล์: {str(e)}")
             st.exception(e)
     
     def grab_and_import_file(self):
-        """Grab ไฟล์ error_trans.txt จากโฟลเดอร์ output และนำเข้า (รูปแบบสุดประหยัด)"""
-        error_file_path = self.output_dir / "error_trans.txt"
-        if not error_file_path.exists():
+        """Grab ไฟล์ error_trans.txt (และ chunked parts ถ้ามี) จาก output/.
+
+        รองรับ:
+          - error_trans.txt (ไฟล์เดียว — backward compat)
+          - error_trans_001.txt, error_trans_002.txt, ... (chunked export)
+        """
+        from modules.error_chunker import find_import_parts
+
+        # หาไฟล์ part ทั้งหมดใน output/
+        part_files = find_import_parts(self.output_dir, "error_trans.txt")
+        if not part_files:
             st.error("❌ ไม่พบไฟล์ `output/error_trans.txt`! กรุณากด Export และแก้ไขไฟล์ก่อน")
             return
 
         try:
-            with st.spinner("กำลัง Import ไฟล์ error_trans.txt..."):
+            with st.spinner(f"กำลัง Import {len(part_files)} ไฟล์..."):
                 if not self.found_errors:
                     st.info("ℹ️ ไม่พบข้อมูลข้อผิดพลาดในหน่วยความจำ จะกู้รายการจากไฟล์ใน 0-input ระหว่างการ import ให้อัตโนมัติ")
 
-                content = error_file_path.read_text('utf-8')
+                # รวม content จากทุก part file
+                content_parts = []
+                for pf in part_files:
+                    try:
+                        content_parts.append(pf.read_text('utf-8'))
+                    except Exception as e:
+                        st.warning(f"⚠ อ่าน {pf.name} ไม่ได้: {e}")
+                content = "\n".join(content_parts)
                 lines = content.split('\n')
+
+                if len(part_files) > 1:
+                    st.caption(f"📥 รวม {len(part_files)} ไฟล์ part เข้าด้วยกันแล้ว")
                 
                 updated_targets = set()
                 fallback_targets = set()

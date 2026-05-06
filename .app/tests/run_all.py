@@ -20,6 +20,8 @@ TEST_MODULES = [
     'test_merge_separate',
     'test_preferences',
     'test_file_processor',
+    'test_fuzzy_matcher',
+    'test_error_chunker',
 ]
 
 if __name__ == '__main__':
