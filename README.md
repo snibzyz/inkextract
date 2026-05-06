@@ -9,11 +9,17 @@
 
 ### 🔴 ขั้นที่ 1 — ติดตั้ง Python (จำเป็น)
 
-ไปดาวน์โหลด **Python 3.10 ขึ้นไป** ที่:
+เลือกดาวน์โหลดตามระบบของคุณ (Python 3.14.4):
 
-👉 **https://www.python.org/downloads/**
+| ระบบ | ดาวน์โหลด |
+|------|-----------|
+| 🪟 Windows (64-bit) | [python-3.14.4-amd64.exe](https://www.python.org/ftp/python/3.14.4/python-3.14.4-amd64.exe) |
+| 🪟 Windows (ARM) | [python-3.14.4-arm64.exe](https://www.python.org/ftp/python/3.14.4/python-3.14.4-arm64.exe) |
+| 🍎 macOS | [python-3.14.4-macos11.pkg](https://www.python.org/ftp/python/3.14.4/python-3.14.4-macos11.pkg) |
 
-ตอนติดตั้ง **อย่าลืมติ๊ก** `Add Python to PATH` ที่หน้าจอแรก ❗
+> ไม่รู้ว่าเครื่องตัวเองเป็น 64-bit หรือ ARM? — Windows ส่วนใหญ่ใช้ **64-bit** ได้เลย
+
+🪟 **Windows**: ตอนติดตั้ง **อย่าลืมติ๊ก** `Add Python to PATH` ที่หน้าจอแรก ❗
 
 > ถ้าเครื่องมี Python อยู่แล้ว เช็คด้วยคำสั่ง `python --version`
 > (เปิด `cmd` พิมพ์ดู — ต้องเห็น `Python 3.x.x`)
