@@ -210,11 +210,11 @@ class VocabProcessor:
     # ===== คำซ้ำเป๊ะ vs คำขัดแย้ง — เพิ่มเข้ามาใน redesign 2026-05-06 =====
 
     def dedupe_by_pair(self, vocab_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """ตัดคำซ้ำเป๊ะ (CN+TH ตรงกัน) — เก็บอันแรกของคู่ละ 1 บรรทัด"""
-        seen = set()
+        """ตัดคำซ้ำโดย CN — CN ซ้ำตัดทิ้งแม้ TH จะต่าง เก็บอันแรกต่อ CN หนึ่งตัว"""
+        seen: set = set()
         out: List[Dict[str, str]] = []
         for it in vocab_list:
-            key = (it.get('cn', ''), it.get('th', ''))
+            key = it.get('cn', '')
             if key in seen:
                 continue
             seen.add(key)

@@ -352,19 +352,18 @@ def test_duplicate_check_output():
 # find_conflicting_translations / get_enhanced_statistics
 # ============================================================
 
-def test_dedupe_by_pair_keeps_first_of_each_pair():
+def test_dedupe_by_pair_keeps_first_of_each_cn():
     vp = VocabProcessor()
     items = [
         {'cn': 'A', 'th': 'a', 'columns': ['A', 'a']},
         {'cn': 'B', 'th': 'b', 'columns': ['B', 'b']},
-        {'cn': 'A', 'th': 'a', 'columns': ['A', 'a']},  # dupe
-        {'cn': 'A', 'th': 'aa', 'columns': ['A', 'aa']},  # different th — keep
+        {'cn': 'A', 'th': 'a', 'columns': ['A', 'a']},   # exact dupe — cut
+        {'cn': 'A', 'th': 'aa', 'columns': ['A', 'aa']},  # CN ซ้ำ TH ต่าง — cut ด้วย
     ]
     result = vp.dedupe_by_pair(items)
-    assert len(result) == 3
+    assert len(result) == 2
     assert (result[0]['cn'], result[0]['th']) == ('A', 'a')
     assert (result[1]['cn'], result[1]['th']) == ('B', 'b')
-    assert (result[2]['cn'], result[2]['th']) == ('A', 'aa')
 
 
 def test_dedupe_by_pair_empty():
@@ -543,8 +542,8 @@ def test_apply_pipeline_dedupe_only():
     vp = VocabProcessor()
     items = _make_items()
     result = vp.apply_pipeline(items, dedupe_pairs=True, sort_by='none')
-    # 4 unique pairs: (A,a), (A,aa), (BBB,b), (CC,c)
-    assert len(result) == 4
+    # 3 unique CN: A, BBB, CC — (A,aa) ถูกตัดเพราะ CN='A' ซ้ำแม้ TH ต่าง
+    assert len(result) == 3
 
 
 def test_apply_pipeline_only_conflicts():
@@ -663,10 +662,9 @@ def test_apply_pipeline_sort_frequency_asc():
     vp = VocabProcessor()
     items = _make_items()
     result = vp.apply_pipeline(items, dedupe_pairs=True, sort_by='frequency_asc')
-    # First two should be freq=1
-    bottom_keys = {(result[0]['cn'], result[0]['th']),
-                   (result[1]['cn'], result[1]['th'])}
-    assert bottom_keys == {('A', 'aa'), ('BBB', 'b')}
+    # หลัง dedupe by CN: A→(A,a) freq=2, BBB freq=1, CC freq=2
+    # freq_asc: BBB (freq=1) ขึ้นก่อน
+    assert (result[0]['cn'], result[0]['th']) == ('BBB', 'b')
 
 
 def test_apply_pipeline_sort_group_by_cn():
