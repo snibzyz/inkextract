@@ -1,0 +1,43 @@
+# ============================================================
+# User data — NEVER commit (อาจมีเนื้อหาลิขสิทธิ์)
+# ============================================================
+workspace/
+
+# ============================================================
+# Local environment / build artifacts
+# ============================================================
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ============================================================
+# User-specific config (template ให้ก็พอ — ไม่อัพ user state)
+# ============================================================
+.config/settings.json
+.config/user_preferences.json
+.config/novel_list.txt
+.config/ocr_settings.json
+# .config/exclude.txt → keep (default template)
+
+# ============================================================
+# IDE / editor / Claude state
+# ============================================================
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Temp / scratch files
+# ============================================================
+.tmp_*
+*.tmp
+*.log

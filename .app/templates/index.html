@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCRMax - Advanced OCR Tool</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .tab {
+            padding: 15px 30px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1.1em;
+            color: #666;
+            transition: all 0.3s ease;
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(81, 207, 102, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+            background: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 600;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        /* Dashboard helpers */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .card {
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 16px;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+        .muted { color: #666; }
+        .table { width: 100%; border-collapse: collapse; }
+        .table th, .table td {
+            border-bottom: 1px solid #eee;
+            text-align: left;
+            padding: 8px 6px;
+            font-size: 14px;
+        }
+        .table th { background: #fafafa; }
+
+        .rules-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        
+        .rule-item {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        
+        .rule-item input {
+            flex: 1;
+        }
+        
+        .rule-item button {
+            padding: 8px 15px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        .add-rule-btn {
+            background: #51cf66;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        
+        .file-browser {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .file-browser input {
+            flex: 1;
+        }
+        
+        .file-browser button {
+            padding: 12px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .tabs {
+                flex-direction: column;
+            }
+            
+            .tab {
+                text-align: center;
+            }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 OCRMax</h1>
+            <p>Advanced OCR Tool with Web GUI</p>
+        </div>
+        
+        <div class="content">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('settings')">⚙️ การตั้งค่า</button>
+                <button class="tab" onclick="switchTab('config')">📝 Config Rules</button>
+                <button class="tab" onclick="switchTab('process')">🚀 ประมวลผล</button>
+                <button class="tab" onclick="switchTab('status')">📊 สถานะ</button>
+                <button class="tab" onclick="switchTab('inspect')">🖼️ ตรวจภาพ</button>
+            </div>
+            
+            <!-- Settings Tab -->
+            <div id="settings" class="tab-content active">
+                <h2>การตั้งค่า OCR</h2>
+                <form id="settingsForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="apiKey">API Key:</label>
+                            <input type="text" id="apiKey" name="apiKey" placeholder="ใส่ API Key ของคุณ">
+                        </div>
+                        <div class="form-group">
+                            <label for="maxRetries">จำนวนครั้งที่ลองใหม่:</label>
+                            <input type="number" id="maxRetries" name="maxRetries" value="3" min="1" max="10">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="inputFolder">โฟลเดอร์ Input:</label>
+                            <div class="file-browser">
+                                <input type="text" id="inputFolder" name="inputFolder" placeholder="เลือกโฟลเดอร์ที่มีรูปภาพ">
+                                <button type="button" onclick="browseFolder('inputFolder')">📁 เลือก</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="outputFolder">โฟลเดอร์ Output:</label>
+                            <div class="file-browser">
+                                <input type="text" id="outputFolder" name="outputFolder" placeholder="เลือกโฟลเดอร์สำหรับบันทึกผลลัพธ์">
+                                <button type="button" onclick="browseFolder('outputFolder')">📁 เลือก</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="configFile">ไฟล์ Config (กฎแทนที่ข้อความ):</label>
+                            <div class="file-browser">
+                                <input type="text" id="configFile" name="configFile" placeholder="เลือกไฟล์ config.txt">
+                                <button type="button" onclick="browseFolder('configFile')">📁 เลือก</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="prefix">Prefix:</label>
+                            <input type="text" id="prefix" name="prefix" value="Chapter " placeholder="คำนำหน้า">
+                        </div>
+                        <div class="form-group">
+                            <label for="suffix">Suffix:</label>
+                            <input type="text" id="suffix" name="suffix" placeholder="คำต่อท้าย">
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="padNumber">จำนวนหลักเลข:</label>
+                            <input type="number" id="padNumber" name="padNumber" value="4" min="1" max="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="batchSize">ขนาด Batch:</label>
+                            <input type="number" id="batchSize" name="batchSize" value="5" min="1" max="20">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="parallelEnabled" name="parallelEnabled" checked>
+                            <label for="parallelEnabled">เปิดใช้งานการประมวลผลแบบขนาน</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="removeKeywords">คำที่ต้องการลบ (คั่นด้วยจุลภาค):</label>
+                        <input type="text" id="removeKeywords" name="removeKeywords" value="faloo.com,cellizions" placeholder="faloo.com,cellizions">
+                    </div>
+                    
+                    <button type="button" class="btn btn-success" onclick="saveSettings()">💾 บันทึกการตั้งค่า</button>
+                </form>
+            </div>
+            
+            <!-- Config Rules Tab -->
+            <div id="config" class="tab-content">
+                <h2>จัดการ Config Rules</h2>
+                <div class="rules-container" id="rulesContainer">
+                    <!-- Rules will be loaded here -->
+                </div>
+                <button type="button" class="add-rule-btn" onclick="addRule()">➕ เพิ่ม Rule ใหม่</button>
+                <button type="button" class="btn btn-success" onclick="saveRules()">💾 บันทึก Rules</button>
+            </div>
+            
+            <!-- Process Tab -->
+            <div id="process" class="tab-content">
+                <h2>ประมวลผล OCR</h2>
+                <div class="form-group">
+                    <label>ตรวจสอบการตั้งค่าก่อนเริ่มประมวลผล:</label>
+                    <div id="processStatus" class="status info">
+                        พร้อมสำหรับการประมวลผล
+                    </div>
+                </div>
+                
+                <div class="progress-container" id="progressContainer" style="display: none;">
+                    <div class="progress-bar" id="progressBar">0%</div>
+                </div>
+                
+                <div class="form-group">
+                    <button type="button" class="btn btn-primary" id="startBtn" onclick="startProcessing()">🚀 เริ่มประมวลผล</button>
+                    <button type="button" class="btn btn-danger" id="stopBtn" onclick="stopProcessing()" style="display: none;">⏹️ หยุดการประมวลผล</button>
+                </div>
+            </div>
+            
+            <!-- Status Tab -->
+            <div id="status" class="tab-content">
+                <h2>สถานะการประมวลผล</h2>
+                <div id="statusInfo">
+                    <div class="status info">
+                        ยังไม่ได้เริ่มการประมวลผล
+                    </div>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="refreshStatus()">🔄 รีเฟรชสถานะ</button>
+            </div>
+
+            <!-- Inspect Tab -->
+            <div id="inspect" class="tab-content">
+                <h2>ตรวจภาพในโฟลเดอร์ Input</h2>
+                <p class="muted">กฎ: โฟลเดอร์ที่มีรูป 1 รูป ควรมีดัชนี (0). ถ้ามีมากกว่า 1 รูป ต้องไม่มี (0) และต้องมีอย่างน้อย (1) และ (2).</p>
+                <div class="form-group">
+                    <button type="button" class="btn btn-primary" onclick="runScan()">🔎 สแกนโฟลเดอร์</button>
+                </div>
+                <div id="scanSummary" class="grid" style="display:none">
+                    <div class="card"><div>รวมโฟลเดอร์</div><div id="sumTotal" class="muted">0</div></div>
+                    <div class="card"><div>ปกติ</div><div id="sumOK" class="muted">0</div></div>
+                    <div class="card"><div>มีปัญหา</div><div id="sumIssues" class="muted">0</div></div>
+                </div>
+                <div id="scanCounters" class="grid" style="display:none">
+                    <div class="card"><div>โฟลเดอร์เดี่ยว index ไม่ใช่ (0)</div><div id="cSingleWrong" class="muted">0</div></div>
+                    <div class="card"><div>หลายรูป ขาด (1) หรือ (2)</div><div id="cMissing12" class="muted">0</div></div>
+                    <div class="card"><div>หลายรูป แต่พบ (0)</div><div id="cHas0" class="muted">0</div></div>
+                    <div class="card"><div>ไม่มีรูปภาพ</div><div id="cEmpty" class="muted">0</div></div>
+                </div>
+                <div id="scanTableWrap" style="margin-top:16px; display:none">
+                    <table class="table" id="scanTable">
+                        <thead>
+                            <tr>
+                                <th>โฟลเดอร์</th>
+                                <th>จำนวนรูป</th>
+                                <th>ปัญหา</th>
+                                <th>ตัวอย่างไฟล์</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConfig = {};
+        let isProcessing = false;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadConfig();
+            loadRules();
+            startStatusPolling();
+        });
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+        
+        // Load configuration
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                currentConfig = data;
+                
+                // Populate form fields
+                document.getElementById('apiKey').value = data.api_key || '';
+                document.getElementById('inputFolder').value = data.input_folder || '';
+                document.getElementById('outputFolder').value = data.output_folder || '';
+                document.getElementById('configFile').value = data.config_file || '';
+                document.getElementById('maxRetries').value = data.max_retries || 3;
+                document.getElementById('prefix').value = data.prefix || 'Chapter ';
+                document.getElementById('suffix').value = data.suffix || '';
+                document.getElementById('padNumber').value = data.pad_number || 4;
+                document.getElementById('batchSize').value = data.batch_size || 5;
+                document.getElementById('parallelEnabled').checked = data.parallel_enabled || false;
+                document.getElementById('removeKeywords').value = (data.remove_keywords || []).join(',');
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+        }
+        
+        // Save settings
+        async function saveSettings() {
+            const formData = {
+                api_key: document.getElementById('apiKey').value,
+                input_folder: document.getElementById('inputFolder').value,
+                output_folder: document.getElementById('outputFolder').value,
+                config_file: document.getElementById('configFile').value,
+                max_retries: parseInt(document.getElementById('maxRetries').value),
+                prefix: document.getElementById('prefix').value,
+                suffix: document.getElementById('suffix').value,
+                pad_number: parseInt(document.getElementById('padNumber').value),
+                batch_size: parseInt(document.getElementById('batchSize').value),
+                parallel_enabled: document.getElementById('parallelEnabled').checked,
+                remove_keywords: document.getElementById('removeKeywords').value.split(',').map(s => s.trim()).filter(s => s)
+            };
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showStatus('success', 'บันทึกการตั้งค่าเรียบร้อยแล้ว');
+                    currentConfig = formData;
+                } else {
+                    showStatus('error', 'เกิดข้อผิดพลาด: ' + result.message);
+                }
+            } catch (error) {
+                showStatus('error', 'เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+            }
+        }
+        
+        // Load rules
+        async function loadRules() {
+            try {
+                const response = await fetch('/api/config/rules');
+                const data = await response.json();
+                displayRules(data.rules || []);
+            } catch (error) {
+                console.error('Error loading rules:', error);
+            }
+        }
+        
+        // Display rules
+        function displayRules(rules) {
+            const container = document.getElementById('rulesContainer');
+            container.innerHTML = '';
+            
+            rules.forEach((rule, index) => {
+                const ruleDiv = document.createElement('div');
+                ruleDiv.className = 'rule-item';
+                ruleDiv.innerHTML = `
+                    <input type="text" placeholder="Pattern" value="${rule[0] || ''}" data-pattern="${index}">
+                    <span>=</span>
+                    <input type="text" placeholder="Replacement" value="${rule[1] || ''}" data-replacement="${index}">
+                    <button onclick="removeRule(${index})">🗑️</button>
+                `;
+                container.appendChild(ruleDiv);
+            });
+        }
+        
+        // Add rule
+        function addRule() {
+            const container = document.getElementById('rulesContainer');
+            const ruleDiv = document.createElement('div');
+            ruleDiv.className = 'rule-item';
+            ruleDiv.innerHTML = `
+                <input type="text" placeholder="Pattern" data-pattern="new">
+                <span>=</span>
+                <input type="text" placeholder="Replacement" data-replacement="new">
+                <button onclick="removeRule(this)">🗑️</button>
+            `;
+            container.appendChild(ruleDiv);
+        }
+        
+        // Remove rule
+        function removeRule(element) {
+            element.closest('.rule-item').remove();
+        }
+        
+        // Save rules
+        async function saveRules() {
+            const rules = [];
+            const ruleItems = document.querySelectorAll('.rule-item');
+            
+            ruleItems.forEach(item => {
+                const pattern = item.querySelector('[data-pattern]').value.trim();
+                const replacement = item.querySelector('[data-replacement]').value.trim();
+                if (pattern && replacement) {
+                    rules.push([pattern, replacement]);
+                }
+            });
+            
+            try {
+                const response = await fetch('/api/config/rules', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ rules: rules })
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showStatus('success', 'บันทึก Rules เรียบร้อยแล้ว');
+                } else {
+                    showStatus('error', 'เกิดข้อผิดพลาด: ' + result.message);
+                }
+            } catch (error) {
+                showStatus('error', 'เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+            }
+        }
+        
+        // Start processing
+        async function startProcessing() {
+            if (isProcessing) return;
+            
+            // Validate first
+            const ok = await validateSettings();
+            if (!ok) { return; }
+
+            const processData = {
+                api_key: document.getElementById('apiKey').value,
+                input_folder: document.getElementById('inputFolder').value,
+                output_folder: document.getElementById('outputFolder').value,
+                config_file: document.getElementById('configFile').value,
+                max_retries: parseInt(document.getElementById('maxRetries').value),
+                prefix: document.getElementById('prefix').value,
+                suffix: document.getElementById('suffix').value,
+                pad_number: parseInt(document.getElementById('padNumber').value),
+                batch_size: parseInt(document.getElementById('batchSize').value),
+                parallel_enabled: document.getElementById('parallelEnabled').checked,
+                remove_keywords: document.getElementById('removeKeywords').value.split(',').map(s => s.trim()).filter(s => s)
+            };
+            
+            try {
+                const response = await fetch('/api/process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(processData)
+                });
+                
+                const result = await response.json();
+                if (result.status === 'success') {
+                    isProcessing = true;
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('stopBtn').style.display = 'inline-block';
+                    document.getElementById('progressContainer').style.display = 'block';
+                    showStatus('info', 'เริ่มการประมวลผลแล้ว');
+                } else {
+                    showStatus('error', 'เกิดข้อผิดพลาด: ' + result.message);
+                }
+            } catch (error) {
+                showStatus('error', 'เกิดข้อผิดพลาดในการเริ่มประมวลผล: ' + error.message);
+            }
+        }
+        
+        // Stop processing
+        async function stopProcessing() {
+            try {
+                await fetch('/api/stop', { method: 'POST' });
+                isProcessing = false;
+                document.getElementById('startBtn').style.display = 'inline-block';
+                document.getElementById('stopBtn').style.display = 'none';
+                showStatus('info', 'หยุดการประมวลผลแล้ว');
+            } catch (error) {
+                showStatus('error', 'เกิดข้อผิดพลาดในการหยุดประมวลผล: ' + error.message);
+            }
+        }
+        
+        // Status polling
+        function startStatusPolling() {
+            setInterval(async () => {
+                try {
+                    const response = await fetch('/api/status');
+                    const status = await response.json();
+                    
+                    if (status.is_processing) {
+                        isProcessing = true;
+                        document.getElementById('startBtn').style.display = 'none';
+                        document.getElementById('stopBtn').style.display = 'inline-block';
+                        document.getElementById('progressContainer').style.display = 'block';
+                        
+                        const progress = status.progress || 0;
+                        document.getElementById('progressBar').style.width = progress + '%';
+                        document.getElementById('progressBar').textContent = progress + '%';
+                        
+                        const statusText = `กำลังประมวลผล: ${status.processed_files || 0}/${status.total_files || 0} ไฟล์`;
+                        document.getElementById('processStatus').textContent = statusText;
+                        document.getElementById('processStatus').className = 'status info';
+                    } else {
+                        isProcessing = false;
+                        document.getElementById('startBtn').style.display = 'inline-block';
+                        document.getElementById('stopBtn').style.display = 'none';
+                        
+                        if (status.progress === 100) {
+                            document.getElementById('progressBar').style.width = '100%';
+                            document.getElementById('progressBar').textContent = '100%';
+                            document.getElementById('processStatus').textContent = 'การประมวลผลเสร็จสิ้น';
+                            document.getElementById('processStatus').className = 'status success';
+                        }
+                    }
+                    
+                    // Update status tab
+                    updateStatusTab(status);
+                } catch (error) {
+                    console.error('Error polling status:', error);
+                }
+            }, 2000);
+        }
+        
+        // Update status tab
+        function updateStatusTab(status) {
+            const statusInfo = document.getElementById('statusInfo');
+            let statusHtml = '';
+            
+            if (status.is_processing) {
+                statusHtml = `
+                    <div class="status info">
+                        <strong>กำลังประมวลผล...</strong><br>
+                        ความคืบหน้า: ${status.progress || 0}%<br>
+                        ไฟล์ที่ประมวลผลแล้ว: ${status.processed_files || 0}/${status.total_files || 0}<br>
+                        ไฟล์ปัจจุบัน: ${status.current_file || 'ไม่ระบุ'}
+                    </div>
+                `;
+            } else if (status.progress === 100) {
+                statusHtml = `
+                    <div class="status success">
+                        <strong>การประมวลผลเสร็จสิ้น!</strong><br>
+                        ประมวลผลไฟล์ทั้งหมด: ${status.total_files || 0} ไฟล์
+                    </div>
+                `;
+            } else {
+                statusHtml = `
+                    <div class="status info">
+                        พร้อมสำหรับการประมวลผล
+                    </div>
+                `;
+            }
+            
+            if (status.errors && status.errors.length > 0) {
+                statusHtml += `
+                    <div class="status error">
+                        <strong>ข้อผิดพลาด:</strong><br>
+                        ${status.errors.join('<br>')}
+                    </div>
+                `;
+            }
+            
+            statusInfo.innerHTML = statusHtml;
+        }
+        
+        // Refresh status
+        function refreshStatus() {
+            startStatusPolling();
+        }
+        
+        // Show status message
+        function showStatus(type, message) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            
+            // Insert at the top of the content
+            const content = document.querySelector('.content');
+            content.insertBefore(statusDiv, content.firstChild);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                statusDiv.remove();
+            }, 5000);
+        }
+        
+        // Browse folder or file (prompt-based placeholder)
+        function browseFolder(inputId) {
+            const label = inputId === 'configFile' ? 'ไฟล์ config.txt' : 'path ของโฟลเดอร์';
+            const path = prompt('กรุณาใส่ ' + label + ':');
+            if (path) {
+                document.getElementById(inputId).value = path;
+            }
+        }
+
+        // Validation API helper
+        async function validateSettings() {
+            const payload = {
+                api_key: document.getElementById('apiKey').value,
+                input_folder: document.getElementById('inputFolder').value,
+                output_folder: document.getElementById('outputFolder').value,
+                pad_number: document.getElementById('padNumber').value,
+                batch_size: document.getElementById('batchSize').value,
+                config_file: document.getElementById('configFile').value
+            };
+            try {
+                const res = await fetch('/api/validate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (data.errors && data.errors.length) {
+                        showStatus('error', 'ตรวจพบข้อผิดพลาด: ' + data.errors.join('; '));
+                        return false;
+                    }
+                    if (data.warnings && data.warnings.length) {
+                        showStatus('info', 'คำเตือน: ' + data.warnings.join('; '));
+                    }
+                    return true;
+                }
+                showStatus('error', data.message || 'Validation failed');
+                return false;
+            } catch (e) {
+                showStatus('error', 'เกิดข้อผิดพลาดในการตรวจสอบ: ' + e.message);
+                return false;
+            }
+        }
+
+        // Scan input folder
+        async function runScan() {
+            const inputFolder = document.getElementById('inputFolder').value || currentConfig.input_folder;
+            if (!inputFolder) { showStatus('error', 'กรุณาระบุโฟลเดอร์ Input ก่อน'); return; }
+            try {
+                const res = await fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input_folder: inputFolder }) });
+                const data = await res.json();
+                if (data.status !== 'success') { showStatus('error', data.message || 'สแกนไม่สำเร็จ'); return; }
+                renderScan(data.data);
+                showStatus('success', 'สแกนเสร็จสิ้น');
+            } catch (e) {
+                showStatus('error', 'เกิดข้อผิดพลาดในการสแกน: ' + e.message);
+            }
+        }
+
+        function renderScan(scan) {
+            document.getElementById('scanSummary').style.display = 'grid';
+            document.getElementById('scanCounters').style.display = 'grid';
+            document.getElementById('scanTableWrap').style.display = 'block';
+            document.getElementById('sumTotal').textContent = scan.total_subfolders;
+            document.getElementById('sumOK').textContent = scan.ok_folders;
+            document.getElementById('sumIssues').textContent = scan.issue_folders;
+            document.getElementById('cSingleWrong').textContent = scan.counters.single_wrong_index;
+            document.getElementById('cMissing12').textContent = scan.counters.multi_missing_1_or_2;
+            document.getElementById('cHas0').textContent = scan.counters.multi_contains_0;
+            document.getElementById('cEmpty').textContent = scan.counters.empty_or_no_images;
+
+            const tbody = document.querySelector('#scanTable tbody');
+            tbody.innerHTML = '';
+            (scan.issues || []).forEach(issue => {
+                const tr = document.createElement('tr');
+                const problems = (issue.problems || []).join('; ');
+                const samples = (issue.samples || []).join(', ');
+                tr.innerHTML = `<td>${issue.folder}</td><td>${issue.file_count}</td><td>${problems}</td><td>${samples}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+    </script>
+</body>
+</html>

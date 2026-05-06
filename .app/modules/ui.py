@@ -1,0 +1,582 @@
+"""ui.py — Central UI library for INKEXTRACT.
+
+ทุก component ของ UI ผ่าน module นี้ → ปรับ theme/รูปแบบที่เดียว
+หลักการ:
+- semantic ก่อน decoration
+- tooltip ทุกปุ่ม/input ที่ผู้ใช้กระทำได้
+- description ใส่เฉพาะกรณีที่ความหมายไม่ชัดในตัวมันเอง
+"""
+from __future__ import annotations
+import streamlit as st
+from contextlib import contextmanager
+from typing import Optional, Iterable
+
+# ===== ธีมสีส้ม INKEXTRACT =====
+ORANGE_PRIMARY = "#F57C00"
+ORANGE_DARK = "#E65100"
+ORANGE_LIGHT = "#FFB74D"
+ORANGE_BG = "#FFF3E0"
+TEXT_DARK = "#3E2723"
+GRAY_BORDER = "#E0E0E0"
+
+APP_NAME = "INKEXTRACT"
+APP_TAGLINE = "เครื่องมือจัดการนิยายแปล — ตรวจ • คัด • รวม • แยก • คำศัพท์"
+
+_GLOBAL_CSS = f"""
+<style>
+/* ============================================================
+* Sarabun font + Material Symbols (icons แทน emoji)
+* ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap');
+/* Streamlit ใช้ Material Symbols Rounded เป็นหลัก — ต้อง import ก่อน Outlined */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-50..200&display=swap');
+
+/* Sarabun for ALL text EXCEPT material icons + monospace
+   Streamlit renders :material/<name>: as <span role="img" aria-label="<name> icon" ...>
+   ดังนั้น :not([role="img"]) ที่ aria-label ลงท้ายด้วย " icon" → ข้าม */
+html body .stApp,
+html body .stApp *:not([role="img"]):not([data-testid="stIconMaterial"]):not([class*="material-symbols"]):not([class*="material-icons"]):not(.micon):not(pre):not(code) {{
+    font-family: 'Sarabun', 'Tahoma', 'Microsoft YaHei', sans-serif !important;
+}}
+html body .stApp pre, html body .stApp code,
+html body .stApp .ms-preview-wrap pre, html body .vc-result .file {{
+    font-family: 'Consolas', 'Courier New', 'Liberation Mono', monospace !important;
+}}
+
+/* Defensive: belt-and-suspenders for Material icons.
+   Streamlit: <span role="img" aria-label="<name> icon" style="font-family:'Material Symbols Rounded'">name</span>
+   เราต้อง override font-family inline style → ใช้ !important + match by role/aria. */
+html body .stApp span[role="img"][aria-label$=" icon"],
+html body .stApp [data-testid="stIconMaterial"],
+html body .stApp [class*="material-symbols"],
+html body .stApp [class*="material-icons"],
+html body .stApp span.micon,
+html body .stApp .micon {{
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Icons' !important;
+    font-weight: normal !important;
+    font-style: normal !important;
+    line-height: 1 !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-feature-settings: 'liga' !important;
+    -webkit-font-smoothing: antialiased !important;
+    font-feature-settings: 'liga' !important;
+}}
+html body .stApp span.micon {{
+    font-size: 1.1em;
+    display: inline-flex; vertical-align: middle;
+    color: inherit;
+    font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}}
+html body .stApp .micon.lg {{ font-size: 1.6em; }}
+html body .stApp .micon.xl {{ font-size: 2.2em; }}
+
+/* ============================================================
+* Theme tokens — light defaults, dark overrides via media query
+* + Streamlit's [data-theme="dark"] attribute (covers manual toggle)
+* ============================================================ */
+:root {{
+    /* radius scale — consistent across all components */
+    --ink-radius-sm: 6px;
+    --ink-radius-md: 8px;
+    --ink-radius-lg: 10px;
+    --ink-radius-xl: 14px;
+    --ink-radius-pill: 999px;
+    /* brand orange — same in both themes */
+    --ink-orange: {ORANGE_PRIMARY};
+    --ink-orange-dark: {ORANGE_DARK};
+    --ink-orange-light: {ORANGE_LIGHT};
+
+    /* surfaces */
+    --ink-surface: #FFFFFF;
+    --ink-surface-2: #FAFAFA;
+    --ink-surface-tint: #FFF8E1;
+    --ink-surface-tint-strong: #FFF3E0;
+    --ink-surface-input: #FFFFFF;
+
+    /* text */
+    --ink-text: #212121;
+    --ink-text-strong: #3E2723;
+    --ink-text-muted: #6D4C41;
+    --ink-text-faint: #9E9E9E;
+
+    /* borders */
+    --ink-border: #E0E0E0;
+    --ink-border-soft: #EEEEEE;
+    --ink-border-orange: #FFB74D;
+
+    /* status */
+    --ink-success: #2E7D32;
+    --ink-success-bg: #E8F5E9;
+    --ink-warn: #C62828;
+    --ink-warn-bg: #FFEBEE;
+
+    /* shadows */
+    --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+    --ink-shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+    --ink-shadow-lg: 0 8px 18px rgba(245,124,0,0.18);
+}}
+
+/* dark mode — auto via system preference */
+@media (prefers-color-scheme: dark) {{
+    :root {{
+        --ink-orange: #FFA726;
+        --ink-orange-dark: #FFB74D;
+        --ink-orange-light: #FFD180;
+
+        --ink-surface: #1E2129;
+        --ink-surface-2: #262730;
+        --ink-surface-tint: rgba(255,167,38,0.10);
+        --ink-surface-tint-strong: rgba(255,167,38,0.16);
+        --ink-surface-input: #2A2D36;
+
+        --ink-text: #FAFAFA;
+        --ink-text-strong: #FFFFFF;
+        --ink-text-muted: #C7B9B0;
+        --ink-text-faint: #8B8B8B;
+
+        --ink-border: #3D434B;
+        --ink-border-soft: #2E333B;
+        --ink-border-orange: #FFB74D;
+
+        --ink-success: #81C784;
+        --ink-success-bg: rgba(46,125,50,0.20);
+        --ink-warn: #EF9A9A;
+        --ink-warn-bg: rgba(198,40,40,0.20);
+
+        --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
+        --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
+        --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
+    }}
+}}
+
+/* dark mode — Streamlit manual toggle (data-theme attribute on body/html) */
+[data-theme="dark"] {{
+    --ink-orange: #FFA726;
+    --ink-orange-dark: #FFB74D;
+    --ink-orange-light: #FFD180;
+
+    --ink-surface: #1E2129;
+    --ink-surface-2: #262730;
+    --ink-surface-tint: rgba(255,167,38,0.10);
+    --ink-surface-tint-strong: rgba(255,167,38,0.16);
+    --ink-surface-input: #2A2D36;
+
+    --ink-text: #FAFAFA;
+    --ink-text-strong: #FFFFFF;
+    --ink-text-muted: #C7B9B0;
+    --ink-text-faint: #8B8B8B;
+
+    --ink-border: #3D434B;
+    --ink-border-soft: #2E333B;
+    --ink-border-orange: #FFB74D;
+
+    --ink-success: #81C784;
+    --ink-success-bg: rgba(46,125,50,0.20);
+    --ink-warn: #EF9A9A;
+    --ink-warn-bg: rgba(198,40,40,0.20);
+
+    --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
+    --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
+    --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
+}}
+
+/* ============================================================
+* Buttons — uniform size + orange theme + consistent radius
+* ============================================================ */
+.stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
+    height: 40px !important;
+    min-height: 40px !important;
+    padding: 8px 18px !important;
+    border-radius: var(--ink-radius-md) !important;
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    line-height: 1.2 !important;
+    transition: all 0.15s !important;
+}}
+.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"],
+.stFormSubmitButton > button[kind="primary"] {{
+    background: var(--ink-orange) !important;
+    color: white !important;
+    border: 1px solid var(--ink-orange-dark) !important;
+}}
+.stButton > button[kind="primary"]:hover {{
+    background: var(--ink-orange-dark) !important;
+    border-color: var(--ink-orange-dark) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(245,124,0,0.30);
+}}
+.stButton > button[kind="secondary"]:hover {{
+    border-color: var(--ink-orange) !important;
+    color: var(--ink-orange-dark) !important;
+}}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-highlight"] {{ background-color: var(--ink-orange); }}
+.stTabs [aria-selected="true"] {{ color: var(--ink-orange-dark) !important; }}
+.stTabs [data-baseweb="tab"] {{ font-weight: 600; }}
+
+/* Progress + metric */
+.stProgress > div > div > div > div {{ background-color: var(--ink-orange); }}
+[data-testid="stMetricValue"] {{ color: var(--ink-orange-dark); }}
+
+/* st.pills + st.segmented_control — pill-shaped, orange-active */
+[data-testid="stPills"] button, [data-testid="stSegmentedControl"] button {{
+    border-radius: var(--ink-radius-pill) !important;
+    font-weight: 600 !important;
+}}
+
+/* Inputs — uniform radius + theme bg */
+.stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div,
+.stMultiSelect div[data-baseweb="select"] > div, .stTextArea textarea {{
+    border-radius: var(--ink-radius-md) !important;
+}}
+
+/* ============================================================
+ * File uploader — drag-drop dropzone (สวย ๆ + ใหญ่ + drag feedback)
+ * ============================================================ */
+[data-testid="stFileUploaderDropzone"] {{
+    background: var(--ink-surface-tint) !important;
+    border: 2px dashed var(--ink-border-orange) !important;
+    border-radius: var(--ink-radius-xl) !important;
+    padding: 1.5rem !important;
+    min-height: 120px !important;
+    transition: all 0.2s ease !important;
+}}
+[data-testid="stFileUploaderDropzone"]:hover {{
+    background: var(--ink-surface-tint-strong) !important;
+    border-color: var(--ink-orange) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--ink-shadow-md);
+}}
+/* drag-over visual feedback */
+[data-testid="stFileUploaderDropzone"][aria-disabled="false"]:focus-within,
+[data-testid="stFileUploaderDropzone"]:active {{
+    background: var(--ink-surface-tint-strong) !important;
+    border-color: var(--ink-orange-dark) !important;
+    box-shadow: 0 0 0 4px rgba(245,124,0,0.15);
+}}
+/* Browse button inside dropzone — ส้ม + uniform กับปุ่มอื่น */
+[data-testid="stFileUploaderDropzone"] button {{
+    background: var(--ink-orange) !important;
+    color: white !important;
+    border: 1px solid var(--ink-orange-dark) !important;
+    font-weight: 600 !important;
+}}
+[data-testid="stFileUploaderDropzone"] button:hover {{
+    background: var(--ink-orange-dark) !important;
+}}
+/* "Drag and drop file here" + "200MB per file" instructions */
+[data-testid="stFileUploaderDropzoneInstructions"] {{
+    color: var(--ink-text-muted) !important;
+}}
+[data-testid="stFileUploaderDropzoneInstructions"] span {{
+    color: var(--ink-text-faint) !important;
+    font-size: 0.85em !important;
+}}
+
+/* Uploaded file row */
+[data-testid="stFileUploaderFile"] {{
+    background: var(--ink-surface) !important;
+    border: 1px solid var(--ink-border) !important;
+    border-radius: var(--ink-radius-md) !important;
+    padding: 8px 12px !important;
+    margin-top: 8px !important;
+}}
+
+/* Checkbox + radio labels — readable in both themes */
+.stCheckbox label, .stRadio label, .stMultiSelect label {{ color: var(--ink-text) !important; }}
+
+/* ============================================================
+* INKEXTRACT app header — orange gradient, white text on both themes
+* ============================================================ */
+.ink-header {{
+    background: linear-gradient(135deg, {ORANGE_PRIMARY} 0%, {ORANGE_DARK} 100%);
+    border-radius: 14px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 4px 14px rgba(245,124,0,0.25);
+    color: white;
+}}
+.ink-header h1 {{
+    margin: 0; color: white; font-size: 2rem; letter-spacing: 1px;
+    font-weight: 800;
+}}
+.ink-header p {{ margin: 0.25rem 0 0; color: #FFE0B2; font-size: 0.95rem; }}
+
+/* ============================================================
+* Section card
+* ============================================================ */
+.ink-section {{
+    border: 1px solid var(--ink-border);
+    border-left: 4px solid var(--ink-orange);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin: 0.75rem 0 1rem;
+    background: var(--ink-surface);
+    color: var(--ink-text);
+}}
+.ink-section h3 {{ margin: 0 0 0.25rem; color: var(--ink-orange-dark); font-size: 1.1rem; }}
+.ink-section p.ink-desc {{ color: var(--ink-text-muted); font-size: 0.85rem; margin: 0 0 0.6rem; }}
+
+/* ============================================================
+* Chip
+* ============================================================ */
+.ink-chip {{
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    background: var(--ink-surface-tint-strong); color: var(--ink-orange-dark);
+    font-size: 0.8rem; font-weight: 600; margin-right: 6px;
+    border: 1px solid var(--ink-border-orange);
+}}
+</style>
+"""
+
+
+def apply_theme() -> None:
+    """ใส่ CSS theme ระดับ global — ต้องเรียกทุก rerun
+    (Streamlit ลบ markdown ที่ไม่ถูก emit ในรอบ rerun ใหม่)"""
+    st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+
+
+def page_setup(page_title: str = APP_NAME, page_icon: str = "") -> None:
+    """ตั้งค่า page + theme ในการเรียกครั้งเดียว"""
+    st.set_page_config(page_title=page_title, page_icon=page_icon, layout="wide")
+    apply_theme()
+
+
+def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
+    """หัวหน้าเพจสีส้ม"""
+    st.markdown(
+        f"""<div class="ink-header"><h1> {title}</h1><p>{tagline}</p></div>""",
+        unsafe_allow_html=True,
+    )
+
+
+@contextmanager
+def section(title: str, description: Optional[str] = None, icon: str = ""):
+    """กล่องส่วนหนึ่งของหน้า — ใช้แทน st.markdown('### ...')
+
+    Usage:
+        with ui.section("ตรวจคำแปล", description="..."):
+            ...
+            """
+    icon_part = f"{icon} " if icon else ""
+    desc = f'<p class="ink-desc">{description}</p>' if description else ''
+    st.markdown(
+        f'<div class="ink-section"><h3>{icon_part}{title}</h3>{desc}</div>',
+        unsafe_allow_html=True,
+    )
+    yield
+
+
+def kpi_row(items: Iterable[tuple]) -> None:
+    """แสดงแถว KPI / metric — รับ tuples (label, value, [help])"""
+    items = list(items)
+    if not items:
+        return
+    cols = st.columns(len(items))
+    for col, item in zip(cols, items):
+        if len(item) == 3:
+            label, value, help_text = item
+        else:
+            label, value = item
+            help_text = None
+        with col:
+            st.metric(label, value, help=help_text)
+
+
+def primary_button(label: str, *, help: Optional[str] = None, key: Optional[str] = None,
+                   disabled: bool = False, width: str = "stretch") -> bool:
+    """ปุ่มหลัก (สีส้ม) — tooltip บังคับให้ใส่ผ่าน help"""
+    return st.button(
+        label, type="primary", help=help, key=key,
+        disabled=disabled, width=width,
+    )
+
+
+def secondary_button(label: str, *, help: Optional[str] = None, key: Optional[str] = None,
+                     disabled: bool = False, width: str = "stretch") -> bool:
+    """ปุ่มรอง"""
+    return st.button(
+        label, type="secondary", help=help, key=key,
+        disabled=disabled, width=width,
+    )
+
+
+def info(message: str) -> None:
+    st.info(message)
+
+
+def success(message: str) -> None:
+    st.success(message)
+
+
+def warning(message: str) -> None:
+    st.warning(message)
+
+
+def error(message: str) -> None:
+    st.error(message)
+
+
+def chip(label: str) -> str:
+    """คืน HTML chip — ใช้ใน inline markdown"""
+    return f'<span class="ink-chip">{label}</span>'
+
+
+def format_bytes(n: float) -> str:
+    """ฟอร์แมตขนาดไฟล์ — ตรงกับ noveleditor edition"""
+    if n <= 0:
+        return "0 Bytes"
+    units = ["Bytes", "KB", "MB", "GB"]
+    i = 0
+    while n >= 1024 and i < len(units) - 1:
+        n /= 1024
+        i += 1
+    return f"{n:.2f} {units[i]}"
+
+
+# CSS เฉพาะหน้าตรวจต้นฉบับ — ใช้ token เดียวกับ global
+MANUSCRIPT_CSS = """
+<style>
+/* ===== Stats grid (shared with vocab tab via .vc-stats) ===== */
+.ms-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px; margin-bottom: 1rem;
+}
+.ms-stat-card {
+    background: var(--ink-surface);
+    padding: 16px 14px;
+    border-radius: var(--ink-radius-lg);
+    border: 1px solid var(--ink-border);
+    border-top: 4px solid var(--ink-orange);
+    text-align: center;
+    box-shadow: var(--ink-shadow-md);
+    transition: transform 0.15s, box-shadow 0.15s;
+    color: var(--ink-text);
+}
+.ms-stat-card:hover { transform: translateY(-2px); box-shadow: var(--ink-shadow-lg); }
+.ms-stat-card .label {
+    font-size: 0.78em; color: var(--ink-text-muted);
+    margin-bottom: 8px; letter-spacing: 0.3px; font-weight: 600;
+    text-transform: uppercase;
+}
+.ms-stat-card .value {
+    font-size: 1.55em; font-weight: 800;
+    color: var(--ink-orange-dark); line-height: 1;
+}
+
+/* ===== Pane header ===== */
+.ms-pane-header {
+    padding: 12px 16px;
+    background: var(--ink-surface-tint-strong);
+    border: 1px solid var(--ink-border);
+    border-bottom: 2px solid var(--ink-orange);
+    border-radius: var(--ink-radius-lg) var(--ink-radius-lg) 0 0;
+    font-weight: 700;
+    color: var(--ink-orange-dark);
+    font-size: 1.02em;
+    display: flex; align-items: center; gap: 6px;
+}
+
+/* ===== File row (explorer) ===== */
+.ms-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: var(--ink-surface);
+    border: 1.5px solid var(--ink-border);
+    border-radius: var(--ink-radius-md);
+    margin-bottom: 6px; transition: all 0.15s; cursor: default;
+    color: var(--ink-text);
+}
+.ms-row:hover {
+    background: var(--ink-surface-tint);
+    border-color: var(--ink-orange-light);
+    transform: translateX(2px);
+}
+.ms-row.small { background: var(--ink-warn-bg); border-color: var(--ink-warn); }
+.ms-row.active {
+    background: var(--ink-surface-tint-strong);
+    border-color: var(--ink-orange);
+    box-shadow: 0 0 0 2px rgba(245,124,0,0.18);
+}
+.ms-row .icon { font-size: 1.1em; }
+.ms-row .info { flex: 1; min-width: 0; }
+.ms-row .name {
+    font-weight: 600; color: var(--ink-text);
+    font-size: 0.92em; word-break: break-word; line-height: 1.35;
+}
+.ms-row .size { font-size: 0.78em; color: var(--ink-text-muted); margin-top: 2px; }
+.ms-row.small .size { color: var(--ink-warn); font-weight: 600; }
+
+/* ===== List row buttons — compact ===== */
+[data-testid="stHorizontalBlock"] .stCheckbox { margin-top: 4px; }
+
+/* ===== Preview pane ===== */
+.ms-preview-wrap {
+    border: 1px solid var(--ink-border); border-top: 0;
+    border-radius: 0 0 var(--ink-radius-lg) var(--ink-radius-lg);
+    background: var(--ink-surface-2);
+    padding: 0; overflow: hidden;
+}
+.ms-preview-wrap pre {
+    font-family: 'Consolas', 'Courier New', monospace !important;
+    font-size: 13.5px !important; line-height: 1.7 !important;
+    color: var(--ink-text) !important;
+    background: transparent !important;
+    padding: 14px 18px !important; margin: 0 !important;
+    white-space: pre-wrap !important; word-wrap: break-word !important;
+}
+.ms-preview-empty {
+    background: var(--ink-surface-2);
+    border: 1px dashed var(--ink-border); border-top: 0;
+    border-radius: 0 0 var(--ink-radius-lg) var(--ink-radius-lg);
+    padding: 80px 20px; text-align: center;
+    color: var(--ink-text-faint);
+    font-style: italic; font-size: 1.05em;
+}
+
+/* ===== Folder bar wrap ===== */
+.ms-folderbar-wrap {
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-border);
+    border-radius: var(--ink-radius-lg);
+    padding: 10px 14px; margin-bottom: 12px;
+    box-shadow: var(--ink-shadow-sm);
+}
+
+/* ===== Selection count chip ===== */
+.ms-count-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: var(--ink-radius-pill);
+    background: var(--ink-surface-tint-strong);
+    color: var(--ink-orange-dark);
+    font-weight: 700; font-size: 0.95em;
+    border: 1px solid var(--ink-border-orange);
+}
+</style>
+"""
+
+
+def apply_manuscript_css() -> None:
+    """ใส่ CSS เพิ่มเฉพาะหน้าตรวจต้นฉบับ — ต้องเรียกทุก rerun
+    (Streamlit ลบ markdown ที่ไม่ถูก emit ในรอบ rerun ใหม่)"""
+    st.markdown(MANUSCRIPT_CSS, unsafe_allow_html=True)
+
+
+def stats_cards(items: Iterable[tuple]) -> None:
+    """แสดงสถิติเป็นการ์ดเรียงเป็น grid (label, value)"""
+    items = list(items)
+    if not items:
+        return
+    html_parts = ['<div class="ms-stats">']
+    for label, value in items:
+        html_parts.append(
+            f'<div class="ms-stat-card"><div class="label">{label}</div>'
+            f'<div class="value">{value}</div></div>'
+        )
+    html_parts.append('</div>')
+    st.markdown(''.join(html_parts), unsafe_allow_html=True)
