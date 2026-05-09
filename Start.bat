@@ -61,6 +61,19 @@ if exist ".update_pending\READY" (
 
     rmdir /s /q ".update_pending" 2>nul
     echo Update applied: !NEW_TAG!
+
+    REM If we're a source-installed user (.venv mode) AND the update was
+    REM source-only, refresh dependencies in case requirements.txt changed.
+    REM pip is fast when everything is already installed.
+    if /I "!KIND!"=="source" (
+        if exist ".venv\Scripts\python.exe" (
+            echo Refreshing dependencies...
+            ".venv\Scripts\python.exe" -m pip install -r ".app\requirements.txt" --quiet --disable-pip-version-check
+            if errorlevel 1 (
+                echo [WARN] Dependency refresh failed. If the app crashes, run Install.bat again.
+            )
+        )
+    )
     echo.
 )
 

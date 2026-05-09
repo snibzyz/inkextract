@@ -54,10 +54,45 @@ if "!SYS_PY!"=="" (
     pause
     exit /b 1
 )
-echo [1/3] Found system Python: !SYS_PY!
+
+REM Validate Python is 3.10+ (streamlit 1.28+ and pandas need this).
+for /f "tokens=*" %%v in ('!SYS_PY! -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2^>nul') do set "PY_VER=%%v"
+if "!PY_VER!"=="" (
+    echo [X] Could not determine Python version from: !SYS_PY!
+    pause
+    exit /b 1
+)
+for /f "tokens=1,2 delims=." %%a in ("!PY_VER!") do (
+    set "PY_MAJOR=%%a"
+    set "PY_MINOR=%%b"
+)
+set "TOO_OLD="
+if !PY_MAJOR! LSS 3 set "TOO_OLD=1"
+if !PY_MAJOR! EQU 3 if !PY_MINOR! LSS 10 set "TOO_OLD=1"
+if defined TOO_OLD (
+    echo [X] Python !PY_VER! is too old - INKEXTRACT needs Python 3.10 or newer.
+    echo.
+    echo     Install a newer Python: https://www.python.org/downloads/windows/
+    echo     ^(make sure to check "Add Python to PATH"^)
+    echo.
+    pause
+    exit /b 1
+)
+echo [1/3] Found Python !PY_VER! ^(!SYS_PY!^)
 echo.
 
 REM ---- 2. Create venv ----
+REM Re-create if .venv exists but its python.exe doesn't work (e.g. left over
+REM from a Python uninstall, or from a different Python version that's gone).
+set "RECREATE_VENV="
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" --version >nul 2>&1
+    if errorlevel 1 set "RECREATE_VENV=broken"
+)
+if defined RECREATE_VENV (
+    echo [2/3] Existing .venv is broken ^(stale Python^) - recreating...
+    rmdir /s /q .venv
+)
 if exist ".venv\Scripts\python.exe" (
     echo [2/3] .venv already exists - keeping it.
 ) else (

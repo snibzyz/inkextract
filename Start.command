@@ -74,6 +74,14 @@ if [ -f ".update_pending/READY" ]; then
 
     rm -rf .update_pending
     echo "Update applied: $NEW_TAG"
+
+    # If we're a source-installed user (.venv mode) AND the update was
+    # source-only, refresh deps in case requirements.txt changed.
+    if [ "$KIND" = "source" ] && [ -x ".venv/bin/python" ]; then
+        echo "Refreshing dependencies..."
+        .venv/bin/python -m pip install -r .app/requirements.txt --quiet --disable-pip-version-check \
+            || echo "[WARN] Dependency refresh failed. If the app crashes, run Install.command again."
+    fi
     echo
 fi
 

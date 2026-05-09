@@ -140,16 +140,23 @@ def check_for_update(timeout: float = 5.0) -> Optional[dict]:
     if not _is_newer(tag, current):
         return None
 
-    # Prefer platform-specific bundle asset
-    asset_name = _bundle_asset_name()
+    # Are we running from a bundled install (has python/) or a source/dev
+    # install (has .venv or neither)? Bundle users should pull the platform
+    # bundle so python+libs stay in sync; source users should pull the
+    # source zipball so we don't dump a 150MB python/ folder next to their
+    # already-working .venv.
+    we_are_bundled = (ROOT_DIR / "python").exists()
+
     asset_url = ""
     asset_size = 0
-    if asset_name:
-        for a in data.get("assets") or []:
-            if a.get("name") == asset_name:
-                asset_url = a.get("browser_download_url") or ""
-                asset_size = int(a.get("size") or 0)
-                break
+    if we_are_bundled:
+        asset_name = _bundle_asset_name()
+        if asset_name:
+            for a in data.get("assets") or []:
+                if a.get("name") == asset_name:
+                    asset_url = a.get("browser_download_url") or ""
+                    asset_size = int(a.get("size") or 0)
+                    break
 
     if asset_url:
         kind = "bundle"

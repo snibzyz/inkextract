@@ -58,10 +58,36 @@ if [ -z "$SYS_PY" ]; then
     read -n 1 -s -r -p "Press any key to close..."
     exit 1
 fi
-echo "[1/3] Found system Python: $SYS_PY ($($SYS_PY --version))"
+
+# Validate Python is 3.10+ (streamlit 1.28+ and pandas need this).
+PY_VER=$("$SYS_PY" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || true)
+if [ -z "$PY_VER" ]; then
+    echo "[X] Could not determine Python version from: $SYS_PY"
+    read -n 1 -s -r -p "Press any key to close..."
+    exit 1
+fi
+PY_MAJOR=${PY_VER%%.*}
+PY_MINOR=${PY_VER#*.}
+if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
+    echo "[X] Python $PY_VER is too old - INKEXTRACT needs Python 3.10 or newer."
+    echo
+    echo "    Install a newer Python: https://www.python.org/downloads/macos/"
+    echo
+    read -n 1 -s -r -p "Press any key to close..."
+    exit 1
+fi
+echo "[1/3] Found Python $PY_VER ($SYS_PY)"
 echo
 
 # ---- 2. Create venv ----
+# Re-create if .venv exists but its python doesn't work (e.g. left over from
+# a Python uninstall, or from a different Python version that's gone).
+if [ -x ".venv/bin/python" ]; then
+    if ! .venv/bin/python --version >/dev/null 2>&1; then
+        echo "[2/3] Existing .venv is broken (stale Python) - recreating..."
+        rm -rf .venv
+    fi
+fi
 if [ -x ".venv/bin/python" ]; then
     echo "[2/3] .venv already exists - keeping it."
 else
