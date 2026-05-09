@@ -69,27 +69,26 @@ if exist "python\python.exe" (
     set "PY=python\python.exe"
 ) else if exist ".venv\Scripts\python.exe" (
     set "PY=.venv\Scripts\python.exe"
-) else (
-    where python >nul 2>&1
-    if not errorlevel 1 (
-        set "PY=python"
-        echo [WARN] Using system Python ^(no python\ bundle, no .venv detected^).
-        echo        For dev, run once:
-        echo            python -m venv .venv ^&^& .venv\Scripts\pip install -r .app\requirements.txt
-        echo.
-    )
 )
 
 if "%PY%"=="" (
     echo.
-    echo [X] No Python interpreter found.
+    echo [X] Not set up yet.
     echo.
-    echo If you downloaded a release bundle, the python\ folder should be next to this file.
-    echo Re-download from: https://github.com/snibzyz/inkextract/releases/latest
+    echo It looks like neither the bundled python\ folder nor a local .venv\
+    echo was found. This usually means you downloaded the "Source code (zip)"
+    echo from GitHub instead of a release bundle.
     echo.
-    echo If you cloned the source, install Python first then run:
-    echo     python -m venv .venv
-    echo     .venv\Scripts\pip install -r .app\requirements.txt
+    echo Easiest fix - one of:
+    echo.
+    echo   A^) Run Install.bat once ^(needs Python on your machine^):
+    echo        Double-click Install.bat
+    echo        Wait 1-3 min for it to finish
+    echo        Then double-click Start.bat again
+    echo.
+    echo   B^) Download the pre-built bundle ^(no Python install needed^):
+    echo        https://github.com/snibzyz/inkextract/releases/latest
+    echo        File: INKEXTRACT-windows-x64.zip
     echo.
     pause
     exit /b 1

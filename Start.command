@@ -82,25 +82,27 @@ if [ -x "python/bin/python3" ]; then
     PY="python/bin/python3"
 elif [ -x ".venv/bin/python" ]; then
     PY=".venv/bin/python"
-elif command -v python3 >/dev/null 2>&1; then
-    PY="python3"
-    echo "[WARN] Using system Python (no python/ bundle, no .venv detected)."
-    echo "       For dev, run once:"
-    echo "           python3 -m venv .venv && .venv/bin/pip install -r .app/requirements.txt"
-    echo
 fi
 
 if [ -z "$PY" ]; then
     echo
-    echo "[X] No Python interpreter found."
+    echo "[X] Not set up yet."
     echo
-    echo "If you downloaded a release bundle, the python/ folder should be"
-    echo "next to this file. Re-download from:"
-    echo "    https://github.com/snibzyz/inkextract/releases/latest"
+    echo "Neither the bundled python/ folder nor a local .venv/ was found."
+    echo "This usually means you downloaded the 'Source code (zip)' from GitHub"
+    echo "instead of a release bundle."
     echo
-    echo "If you cloned the source, install Python first then run:"
-    echo "    python3 -m venv .venv"
-    echo "    .venv/bin/pip install -r .app/requirements.txt"
+    echo "Easiest fix - one of:"
+    echo
+    echo "  A) Run Install.command once (needs Python on your machine):"
+    echo "       Right-click Install.command -> Open  (first time only)"
+    echo "       Wait 1-3 min for it to finish"
+    echo "       Then double-click Start.command again"
+    echo
+    echo "  B) Download the pre-built bundle (no Python install needed):"
+    echo "       https://github.com/snibzyz/inkextract/releases/latest"
+    echo "       File: INKEXTRACT-macos-arm64.zip  (Apple Silicon)"
+    echo "         or: INKEXTRACT-macos-x64.zip    (Intel)"
     echo
     read -n 1 -s -r -p "Press any key to close..."
     exit 1

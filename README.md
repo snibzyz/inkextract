@@ -32,6 +32,19 @@
 
 ---
 
+### 🟡 โหลด "Source code (zip)" มาแทน?
+
+ถ้าเผลอโหลด `Source code (zip)` จากหน้า Releases (zip ที่ GitHub gen ให้อัตโนมัติ) แทนที่จะเป็น `INKEXTRACT-windows-x64.zip` — zip ตัวนี้ **ไม่มี Python มาให้** ต้องติดตั้งครั้งเดียวก่อน:
+
+| OS | ขั้นตอน |
+|---|---|
+| Windows | ติดตั้ง Python จาก [python.org](https://www.python.org/downloads/windows/) (ติ๊ก `Add Python to PATH`) → ดับเบิลคลิก **`Install.bat`** → รอ 1-3 นาที → ดับเบิลคลิก `Start.bat` |
+| macOS | ติดตั้ง Python จาก [python.org](https://www.python.org/downloads/macos/) → คลิกขวา **`Install.command`** → Open → Open → รอ 1-3 นาที → ดับเบิลคลิก `Start.command` |
+
+หรือกลับไปโหลด pre-built bundle ที่ถูกต้อง — ไม่ต้องลง Python, ไม่ต้องรัน Install
+
+---
+
 ## ฟีเจอร์หลัก
 
 | Tab | ใช้ทำอะไร |
