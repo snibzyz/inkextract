@@ -116,16 +116,29 @@ if [ -z "$PY" ]; then
     exit 1
 fi
 
+# ============================================================
+# Kill any existing Streamlit process bound to port 8501 to prevent
+# double-launches across multiple INKEXTRACT installs on the same machine
+# ============================================================
+STREAMLIT_PORT=8501
+if command -v lsof >/dev/null 2>&1; then
+    for pid in $(lsof -ti tcp:$STREAMLIT_PORT 2>/dev/null); do
+        echo "Found existing process on port $STREAMLIT_PORT (PID $pid) - killing..."
+        kill -9 "$pid" 2>/dev/null || true
+    done
+fi
+
 echo
 echo "============================================================"
 echo "        INKEXTRACT - Translation Toolkit"
 echo "============================================================"
 echo "Starting app... your browser will open shortly."
 echo "To quit: close this Terminal window or press Ctrl+C."
+echo "Install root: $SCRIPT_DIR"
 echo "============================================================"
 echo
 
-"$PY" -m streamlit run ".app/app.py"
+"$PY" -m streamlit run ".app/app.py" --server.port "$STREAMLIT_PORT"
 
 ec=$?
 if [ $ec -ne 0 ]; then

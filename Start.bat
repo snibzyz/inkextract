@@ -107,16 +107,27 @@ if "%PY%"=="" (
     exit /b 1
 )
 
+REM ============================================================
+REM Kill any existing Streamlit process bound to port 8501 to prevent
+REM double-launches across multiple INKEXTRACT installs on the same machine
+REM ============================================================
+set "STREAMLIT_PORT=8501"
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%STREAMLIT_PORT% " ^| findstr LISTENING 2^>nul') do (
+    echo Found existing process on port %STREAMLIT_PORT% (PID %%a) - killing...
+    taskkill /PID %%a /F >nul 2>&1
+)
+
 echo.
 echo ============================================================
 echo        INKEXTRACT - Translation Toolkit
 echo ============================================================
 echo Starting app... your browser will open shortly.
 echo To quit: close this window or press Ctrl+C
+echo Install root: %CD%
 echo ============================================================
 echo.
 
-"%PY%" -m streamlit run ".app\app.py"
+"%PY%" -m streamlit run ".app\app.py" --server.port %STREAMLIT_PORT%
 
 if errorlevel 1 (
     echo.

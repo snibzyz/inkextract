@@ -89,14 +89,21 @@ jobs:
           # copy .config (ships the default exclude.txt template so the
           # user gets the same starting state as a fresh dev checkout)
           cp -R .config bundle/.config
-          # ensure workspace structure exists at root (so user just sees folders ready to use)
-          mkdir -p bundle/workspace/0-input
-          mkdir -p bundle/workspace/1-fix
-          mkdir -p bundle/workspace/2-clean
-          mkdir -p bundle/workspace/3-merge
-          mkdir -p bundle/workspace/4-separate
-          mkdir -p bundle/workspace/output
-          mkdir -p bundle/workspace/vocab
+          # ensure workspace structure exists (PascalCase INKIDEA-style layout v1.1.0+)
+          mkdir -p bundle/workspace/Raw
+          mkdir -p bundle/workspace/Input
+          mkdir -p bundle/workspace/Fix
+          mkdir -p bundle/workspace/Clean
+          mkdir -p bundle/workspace/Finish
+          mkdir -p bundle/workspace/Merge
+          mkdir -p bundle/workspace/Separate
+          mkdir -p bundle/workspace/Import
+          mkdir -p bundle/workspace/Output
+          mkdir -p bundle/workspace/Vocab
+          mkdir -p bundle/workspace/Style
+          mkdir -p bundle/workspace/Prompt
+          mkdir -p bundle/workspace/Temp
+          mkdir -p bundle/workspace/Error/error_trans
 
       # ---------- 4. Add per-OS launcher ----------
       # Launchers (Start.bat / Start.command) live at the repo root - same files

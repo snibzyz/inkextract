@@ -318,6 +318,29 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     padding: 4px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.15);
 }}
+.ink-version-badge {{
+    display: inline-block;
+    margin-left: 0.6rem;
+    padding: 2px 10px;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    font-size: 0.6em; font-weight: 600;
+    color: white;
+    vertical-align: middle;
+    letter-spacing: 0.3px;
+}}
+.ink-install-root {{
+    margin: 0.35rem 0 0; font-size: 0.7rem !important;
+    color: rgba(255,255,255,0.75) !important;
+    font-family: monospace;
+}}
+.ink-install-root code {{
+    background: rgba(0,0,0,0.18);
+    color: #ffe6cc;
+    padding: 1px 6px; border-radius: 4px;
+    font-size: 0.95em;
+}}
 
 /* ============================================================
 * Section card
@@ -373,6 +396,29 @@ def _resolve_logo_path() -> Optional[str]:
     return None
 
 
+def _read_app_version() -> str:
+    """อ่านเวอร์ชันจาก .app/VERSION (string เช่น '1.1.2'). คืน '?' ถ้าอ่านไม่ได้"""
+    try:
+        from . import paths
+        version_file = paths.APP_DIR / "VERSION"
+        if version_file.exists():
+            return version_file.read_text(encoding='utf-8').strip() or '?'
+    except Exception:
+        pass
+    return '?'
+
+
+def get_install_root() -> str:
+    """คืน path ของ INKEXTRACT install ที่กำลังรันอยู่ — ใช้ใน UI diagnostic
+    เพื่อให้ user เห็นชัดเจนว่ารัน install ไหน (เผื่อมีหลายชุดในเครื่องเดียว)
+    """
+    try:
+        from . import paths
+        return str(paths.ROOT)
+    except Exception:
+        return '?'
+
+
 def page_setup(page_title: str = APP_NAME, page_icon: Optional[str] = None) -> None:
     """ตั้งค่า page + theme ในการเรียกครั้งเดียว.
 
@@ -385,7 +431,7 @@ def page_setup(page_title: str = APP_NAME, page_icon: Optional[str] = None) -> N
 
 
 def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
-    """หัวหน้าเพจสีส้ม — แสดงโลโก้ inkideaex.png ถ้ามี"""
+    """หัวหน้าเพจสีส้ม — แสดงโลโก้ + เวอร์ชัน + install root"""
     logo_path = _resolve_logo_path()
     if logo_path:
         try:
@@ -401,13 +447,21 @@ def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
     else:
         logo_html = ''
 
+    version = _read_app_version()
+    install_root = get_install_root()
+    version_html = (
+        f'<span class="ink-version-badge" title="install ที่กำลังรัน: {install_root}">'
+        f'v{version}</span>'
+    )
+
     st.markdown(
         f"""<div class="ink-header">
             <div class="ink-header-row">
                 {logo_html}
                 <div class="ink-header-text">
-                    <h1>{title}</h1>
+                    <h1>{title} {version_html}</h1>
                     <p>{tagline}</p>
+                    <p class="ink-install-root">install: <code>{install_root}</code></p>
                 </div>
             </div>
         </div>""",

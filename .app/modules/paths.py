@@ -34,8 +34,65 @@ rename → PascalCase ครั้งเดียวตอน startup ผ่า�
 """
 from pathlib import Path
 from typing import List, Optional, Tuple
+import os
 
-ROOT = Path(__file__).resolve().parents[2]
+
+def _is_inkextract_root(p: Path) -> bool:
+    """โฟลเดอร์นี้ดูเหมือน INKEXTRACT install หรือไม่"""
+    return (p / ".app" / "app.py").exists() and (p / ".app" / "VERSION").exists()
+
+
+def _detect_root() -> Path:
+    """หา install root โดยลำดับ priority นี้:
+      1. ENV `INKEXTRACT_ROOT` ถ้าตั้งและ valid (force ผ่าน environment)
+      2. Override file `<source>/.config/install_root.txt` (ผู้ใช้เลือกผ่าน UI)
+      3. CWD ถ้าหน้าตา "INKEXTRACT-like" — Start.bat ทำ `cd /d %~dp0` ก่อนรัน
+         streamlit เลย cwd = install ที่ user เปิด Start จริง (auto-detect)
+      4. Fallback: ตำแหน่งของ paths.py file — ใช้กรณีรันจาก IDE / dev tool
+
+    ค่าที่ได้คือโฟลเดอร์ INKEXTRACT (มี `.app/`, `workspace/`, `projects/` ข้างใน)
+    """
+    # 1. ENV override
+    env_root = os.environ.get("INKEXTRACT_ROOT")
+    if env_root:
+        candidate = Path(env_root).expanduser().resolve()
+        if _is_inkextract_root(candidate):
+            return candidate
+
+    # 2. Override file ที่ source — ผู้ใช้ตั้งจาก UI
+    #    (ใช้ source's .config เพื่อให้ override ติดมากับ source — กันสับสน)
+    source_root = Path(__file__).resolve().parents[2]
+    override_file = source_root / ".config" / "install_root.txt"
+    try:
+        if override_file.exists():
+            override_path = override_file.read_text(encoding='utf-8').strip()
+            if override_path:
+                candidate = Path(override_path).expanduser().resolve()
+                if _is_inkextract_root(candidate):
+                    return candidate
+    except OSError:
+        pass
+
+    # 3. CWD auto-detect — Start.bat ตั้ง cwd ให้ก่อน
+    try:
+        cwd = Path.cwd().resolve()
+        if _is_inkextract_root(cwd):
+            return cwd
+    except OSError:
+        pass
+
+    # 4. Fallback: ตำแหน่งของไฟล์ paths.py
+    return source_root
+
+
+ROOT = _detect_root()
+# CWD ตอนเริ่ม process — เก็บไว้ให้ UI แสดง diagnostic
+try:
+    STARTUP_CWD = Path.cwd().resolve()
+except OSError:
+    STARTUP_CWD = ROOT
+# __file__-based root — เก็บไว้แยกเผื่อ UI ต้องการเทียบกับ ROOT ปัจจุบัน
+SOURCE_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = ROOT / ".app"
 CONFIG_DIR = ROOT / ".config"
 

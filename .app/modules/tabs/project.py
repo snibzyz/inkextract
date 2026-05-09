@@ -35,6 +35,8 @@ def render_active_bar() -> None:
     """แถบบอกโปรเจกต์ที่ใช้งานอยู่ — แสดงเหนือ tabs ตลอดเวลา"""
     active = project_manager.get_active_project()
     label = "(เริ่มต้น)" if active.is_default else ""
+    # ใช้ root_path() (derive ปัจจุบัน) ไม่ใช่ active.path (อาจเป็น stale absolute)
+    actual_path = str(active.root_path())
     st.markdown(
         f"""
         <div style="background: var(--ink-surface-tint, #fff7ed); padding: 0.6rem 1rem;
@@ -49,12 +51,107 @@ def render_active_bar() -> None:
                          margin-left: 0.5rem;">{label}</span>
             <span style="font-size: 0.8em; color: var(--ink-text-muted, #666);
                          margin-left: 0.75rem;">
-                <code>{active.path}</code>
+                <code>{actual_path}</code>
             </span>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def _render_install_root_section() -> None:
+    """Diagnostic + UI ให้ user เปลี่ยน install root ได้
+
+    ใช้กรณีมีหลาย INKEXTRACT install บนเครื่องเดียว และอยากบอกแอปว่าให้ใช้อันไหน
+    """
+    install_root = paths.ROOT
+    source_root = paths.SOURCE_ROOT
+    cwd = paths.STARTUP_CWD
+    override_file = source_root / ".config" / "install_root.txt"
+    override_active = override_file.exists()
+
+    with st.expander(":material/folder_managed: ตำแหน่ง install (ตอนนี้รันจากที่ไหน)", expanded=False):
+        # diagnostic info
+        st.markdown(
+            f"""
+            <div style="font-family: monospace; font-size: 0.85em; line-height: 1.7;">
+              <strong>กำลังใช้ ROOT:</strong> <code>{install_root}</code><br>
+              <strong>โค้ดอยู่ที่:</strong> <code>{source_root}</code><br>
+              <strong>CWD ตอนเปิด:</strong> <code>{cwd}</code>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # คำอธิบายสถานะ
+        if str(install_root) == str(source_root) == str(cwd):
+            st.success("ทุกตัวตรงกัน — รันจาก install เดียวกับ source code")
+        elif str(install_root) == str(cwd) and str(install_root) != str(source_root):
+            st.info(
+                f"ROOT ตามไฟล์ที่เปิด (auto-detect จาก Start.bat) — "
+                f"ไม่ใช่ที่เดียวกับ source code"
+            )
+        elif override_active:
+            st.info("ROOT ถูก override ไปยังโฟลเดอร์ที่ผู้ใช้เลือก")
+        else:
+            st.warning(
+                "ROOT ต่างจาก source code และ CWD — อาจรันผ่าน IDE/dev tool "
+                "(ไม่กระทบการใช้งาน)"
+            )
+
+        # Override picker
+        st.markdown("---")
+        st.markdown("**เปลี่ยน install root (เลือกเอง)**")
+
+        if override_active:
+            current_override = override_file.read_text(encoding='utf-8').strip()
+            st.caption(f"override ปัจจุบัน: `{current_override}`")
+        else:
+            st.caption("ยังไม่ได้ตั้ง override — ใช้ auto-detect")
+
+        with st.form("install_root_picker_form", clear_on_submit=False):
+            new_root_input = st.text_input(
+                "Path ของโฟลเดอร์ INKEXTRACT (ที่มี `.app/` อยู่ข้างใน)",
+                value=str(install_root),
+                placeholder=r"เช่น C:\Users\Peteishere\Desktop\INKEXTRACT",
+                help="วาง path ของ INKEXTRACT install ที่ต้องการใช้ — แอปจะอ่านไฟล์ตั้งค่า "
+                     "และโปรเจกต์จากที่นั่นแทน หลังตั้งแล้วต้องปิด-เปิดแอปใหม่",
+                key="install_root_input",
+            )
+            col_set, col_clear = st.columns(2)
+            submit_set = col_set.form_submit_button(
+                "ตั้ง override + ปิด-เปิดแอปใหม่",
+                type="primary",
+                width='stretch',
+            )
+            submit_clear = col_clear.form_submit_button(
+                "ล้าง override (กลับมา auto-detect)",
+                width='stretch',
+                disabled=not override_active,
+            )
+
+            if submit_set:
+                candidate = Path(new_root_input.strip()).expanduser()
+                if not candidate.exists():
+                    st.error(f"ไม่พบโฟลเดอร์: `{candidate}`")
+                elif not (candidate / ".app" / "app.py").exists():
+                    st.error(
+                        f"`{candidate}` ไม่ใช่ INKEXTRACT install (ไม่มี `.app/app.py`)"
+                    )
+                else:
+                    override_file.parent.mkdir(parents=True, exist_ok=True)
+                    override_file.write_text(str(candidate.resolve()), encoding='utf-8')
+                    st.success(
+                        f"ตั้ง override → `{candidate}` แล้ว — กรุณา **ปิดหน้าต่างนี้ + "
+                        f"รัน Start.bat ใหม่** เพื่อให้ผลของการเปลี่ยน"
+                    )
+
+            if submit_clear and override_active:
+                try:
+                    override_file.unlink()
+                    st.success("ล้าง override แล้ว — กรุณาปิด-เปิดแอปใหม่ เพื่อกลับไปใช้ auto-detect")
+                except OSError as e:
+                    st.error(f"ลบไม่ได้: {e}")
 
 
 def render() -> None:
@@ -70,12 +167,14 @@ def render() -> None:
             </h4>
             <p style="margin: 0.5rem 0 0 0; color: var(--ink-text-muted, #666);">
                 แต่ละโปรเจกต์เก็บไฟล์ของตัวเองแยกกัน — ใช้สำหรับทำหลายเรื่องพร้อมกัน
-                โฟลเดอร์ย่อย (0-input, 1-fix, 2-clean, …) ของแต่ละโปรเจกต์ไม่ปนกัน
+                โฟลเดอร์ย่อย (Raw, Input, Fix, Clean, …) ของแต่ละโปรเจกต์ไม่ปนกัน
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    _render_install_root_section()
 
     active = project_manager.get_active_project()
     projects = project_manager.list_projects()
