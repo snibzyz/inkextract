@@ -21,6 +21,62 @@ fi
 export PYTHONIOENCODING=utf-8
 export PYTHONUTF8=1
 
+# ============================================================
+# Apply pending update FIRST, with native rsync.
+#
+# Why not Python here? On Windows we'd hit a python.exe self-lock; on
+# macOS python3 can technically replace itself, but doing the apply in
+# shell before any Python runs keeps both platforms on the same
+# predictable path.
+# ============================================================
+if [ -f ".update_pending/READY" ]; then
+    echo "Applying staged update..."
+
+    KIND="source"
+    if [ -f ".update_pending/staged/.update_kind" ]; then
+        KIND=$(tr -d '[:space:]' < .update_pending/staged/.update_kind)
+    fi
+
+    # Start.bat/.command are excluded: bash on macOS is more permissive
+    # than cmd.exe but still safer to require manual re-download for
+    # launcher changes (matches the Windows behavior).
+    EXCLUDES=(
+        --exclude=".git"
+        --exclude=".venv"
+        --exclude="workspace"
+        --exclude=".config"
+        --exclude="__pycache__"
+        --exclude=".update_pending"
+        --exclude=".update_kind"
+        --exclude="Start.bat"
+        --exclude="Start.command"
+    )
+    if [ "$KIND" != "bundle" ]; then
+        EXCLUDES+=(--exclude="python")
+    fi
+
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a "${EXCLUDES[@]}" .update_pending/staged/ ./ \
+            || echo "[WARN] rsync had issues - continuing anyway."
+    else
+        # Extreme fallback: tar pipe, exclusions baked in.
+        echo "[WARN] rsync not available, using tar fallback."
+        ( cd .update_pending/staged \
+            && tar cf - --exclude=".update_kind" . ) | tar xf - -C ./ \
+            || echo "[WARN] tar copy had issues."
+    fi
+
+    NEW_TAG=$(tr -d '[:space:]' < .update_pending/READY)
+    NEW_TAG="${NEW_TAG#v}"
+    if [ -n "$NEW_TAG" ]; then
+        echo "$NEW_TAG" > .app/VERSION
+    fi
+
+    rm -rf .update_pending
+    echo "Update applied: $NEW_TAG"
+    echo
+fi
+
 PY=""
 if [ -x "python/bin/python3" ]; then
     PY="python/bin/python3"
@@ -48,13 +104,6 @@ if [ -z "$PY" ]; then
     echo
     read -n 1 -s -r -p "Press any key to close..."
     exit 1
-fi
-
-# Apply staged update (bundle mode)
-if [ -f ".update_pending/READY" ]; then
-    echo "Applying queued update..."
-    "$PY" -c "import sys; sys.path.insert(0, '.app'); import updater; sys.exit(updater.apply_staged())" \
-        || echo "Update apply failed - continuing with current version."
 fi
 
 echo
