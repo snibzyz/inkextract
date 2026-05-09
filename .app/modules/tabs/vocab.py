@@ -252,6 +252,7 @@ def _step_header(num: int, title: str, sub: str = "") -> None:
 # ============================================================
 FILTER_CHIPS = [
     ("dedupe", "ตัดคำซ้ำ"),
+    ("drop_note", "ลบหมายเหตุ"),
     ("only_conflicts", "เฉพาะคำขัดแย้ง"),
     ("only_dupes", "เฉพาะคำซ้ำเป๊ะ"),
     ("freq", "กรองความถี่"),
@@ -290,8 +291,8 @@ PRESETS = [
     {
  "key": "dictionary",
  "title": "พจนานุกรม (เริ่มต้น)",
- "desc": "ตัดคำซ้ำ + เรียงตามลำดับเดิม — สะอาดที่สุด ไม่จัดเรียงใหม่",
- "cfg": {"active_filters": ["dedupe"], "sort_by": "none"},
+ "desc": "ตัดคำซ้ำ + ลบคอลัมน์หมายเหตุ + เรียงตามลำดับเดิม — เหลือแค่ จีน[TAB]ไทย",
+ "cfg": {"active_filters": ["dedupe", "drop_note"], "sort_by": "none"},
     },
     {
  "key": "conflicts",
@@ -316,7 +317,7 @@ PRESETS = [
 
 
 _DEFAULTS = {
- "vc_active_filters": ["dedupe"],
+ "vc_active_filters": ["dedupe", "drop_note"],
  "vc_min_freq": 3,
  "vc_max_freq": 100,
  "vc_min_len": 2,
@@ -447,6 +448,7 @@ def _preset_to_opts(preset: dict) -> dict:
  "source_files": None,
  "limit": cfg.get("limit", 0) if "limit" in af else 0,
  "sort_by": cfg.get("sort_by", "length_desc"),
+ "drop_extra_columns": "drop_note" in af,
     }
 
 
@@ -589,6 +591,7 @@ def _collect_opts() -> dict:
  "source_files": s.vc_source_files if ("source" in af and s.vc_source_files) else None,
  "limit": s.vc_limit if "limit" in af else 0,
  "sort_by": s.vc_sort_by,
+ "drop_extra_columns": "drop_note" in af,
     }
 
 
@@ -614,6 +617,8 @@ def _autoname(opts: dict, preset_key: str = None) -> str:
             parts.append(f"q{safe}")
     if opts.get("dedupe_pairs"):
         parts.append("unique")
+    if opts.get("drop_extra_columns"):
+        parts.append("nonote")
     sort_short = {
  "length_desc": "long", "length_asc": "short",
  "prefix": "prefix", "suffix": "suffix",

@@ -297,6 +297,8 @@ class VocabProcessor:
         limit: int = 0,
         # === sort ===
         sort_by: str = "length_desc",
+        # === output transform (ใช้ตอนเขียนไฟล์เท่านั้น — ไม่กระทบจำนวนแถว) ===
+        drop_extra_columns: bool = False,
     ) -> List[Dict[str, str]]:
         """ประกอบ pipeline แบบยืดหยุ่น — ทุก filter ทำงานต่อเนื่อง (AND)
 
@@ -397,10 +399,15 @@ class VocabProcessor:
         filename: str = "vocab_pipeline.txt",
         **opts,
     ) -> str:
-        """รัน pipeline + เขียนไฟล์"""
+        """รัน pipeline + เขียนไฟล์ — ถ้า drop_extra_columns=True จะเขียนแค่ CN+TH"""
         output = self.output_dir / filename
+        drop_extra = bool(opts.get("drop_extra_columns", False))
         result = self.apply_pipeline(vocab_list, **opts)
-        self._write_tsv(output, [self._row_columns(it) for it in result], header=False)
+        if drop_extra:
+            rows = [[it.get('cn', ''), it.get('th', '')] for it in result]
+        else:
+            rows = [self._row_columns(it) for it in result]
+        self._write_tsv(output, rows, header=False)
         return str(output)
 
     def get_enhanced_statistics(self, vocab_list: List[Dict[str, str]]) -> Dict:
