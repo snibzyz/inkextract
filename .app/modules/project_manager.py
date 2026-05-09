@@ -46,7 +46,14 @@ DEFAULT_PROJECT_NAME = "Workspace (เดิม)"
 
 @dataclass
 class Project:
-    """One project = one folder with the standard subdir layout."""
+    """One project = one folder with the standard subdir layout.
+
+    Note: `path` is stored for display/inspection only — at runtime we always
+    derive root from `paths.PROJECTS_DIR / self.id` (or DEFAULT_WORKSPACE_DIR
+    for default). This makes the registry **portable** — moving the whole
+    INKEXTRACT folder to another drive/location just works without editing
+    `projects.json`.
+    """
     id: str
     name: str
     path: str
@@ -57,7 +64,10 @@ class Project:
         return self.id == DEFAULT_PROJECT_ID
 
     def root_path(self) -> Path:
-        return Path(self.path)
+        """Always derive from current paths config — ignore stored absolute path."""
+        if self.is_default:
+            return paths.DEFAULT_WORKSPACE_DIR
+        return paths.PROJECTS_DIR / self.id
 
 
 # ============================================================
@@ -86,19 +96,52 @@ def _empty_registry() -> dict:
     return {"version": 1, "active_project_id": None, "projects": []}
 
 
+def _heal_paths_in_registry(data: dict) -> bool:
+    """Rewrite stored `path` ของแต่ละ project ให้ชี้ที่ paths.PROJECTS_DIR ปัจจุบัน.
+
+    ใช้กรณี:
+      - User ย้ายโฟลเดอร์ INKEXTRACT ไปไดรฟ์/ที่ใหม่ → absolute path เก่าใน
+        registry ไม่ตรงอีกแล้ว
+      - clone repo ใหม่บนเครื่องใหม่ — registry ที่ติดมาจะมี path ของเครื่องเก่า
+
+    Returns:
+        True ถ้ามีการแก้ไข (เพื่อให้ caller รู้ว่าต้อง save)
+    """
+    changed = False
+    expected_root = str(paths.PROJECTS_DIR)
+    for proj in data.get('projects', []):
+        pid = proj.get('id')
+        if not pid:
+            continue
+        expected = str(paths.PROJECTS_DIR / pid)
+        if proj.get('path') != expected:
+            proj['path'] = expected
+            changed = True
+    return changed
+
+
 def _load_data() -> dict:
-    """Read registry from disk — return empty if missing/corrupt."""
+    """Read registry from disk — return empty if missing/corrupt.
+
+    Auto-heal: ถ้า stored path ไม่ตรงกับ paths.PROJECTS_DIR ปัจจุบัน
+    (เช่น ย้ายโฟลเดอร์ข้ามไดรฟ์) → rewrite ให้ตรง
+    """
     pf = paths.PROJECTS_FILE
     if not pf.exists():
         return _empty_registry()
     try:
         data = json.loads(pf.read_text(encoding='utf-8'))
-        # Defensive defaults
         if not isinstance(data, dict):
             return _empty_registry()
         data.setdefault('version', 1)
         data.setdefault('active_project_id', None)
         data.setdefault('projects', [])
+        # Self-heal stored absolute paths
+        if _heal_paths_in_registry(data):
+            try:
+                _save_data(data)
+            except OSError:
+                pass  # ไม่ critical — runtime ยังใช้ root_path() ที่ derive ได้
         return data
     except (OSError, json.JSONDecodeError):
         return _empty_registry()
