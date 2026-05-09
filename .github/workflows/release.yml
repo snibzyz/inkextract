@@ -86,6 +86,9 @@ jobs:
           set -euxo pipefail
           # copy .app directory (source code + VERSION)
           cp -R .app bundle/.app
+          # copy .config (ships the default exclude.txt template so the
+          # user gets the same starting state as a fresh dev checkout)
+          cp -R .config bundle/.config
           # ensure workspace structure exists at root (so user just sees folders ready to use)
           mkdir -p bundle/workspace/0-input
           mkdir -p bundle/workspace/1-fix
@@ -94,7 +97,6 @@ jobs:
           mkdir -p bundle/workspace/4-separate
           mkdir -p bundle/workspace/output
           mkdir -p bundle/workspace/vocab
-          mkdir -p bundle/.config
 
       # ---------- 4. Add per-OS launcher ----------
       # Launchers (Start.bat / Start.command) live at the repo root - same files
