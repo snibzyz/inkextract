@@ -108,14 +108,11 @@ if "%PY%"=="" (
 )
 
 REM ============================================================
-REM Kill any existing Streamlit process bound to port 8501 to prevent
-REM double-launches across multiple INKEXTRACT installs on the same machine
+REM Kill any existing Streamlit on port 8501 - use PowerShell to avoid
+REM cmd.exe's nasty parentheses-escaping issues inside for /f.
 REM ============================================================
 set "STREAMLIT_PORT=8501"
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":%STREAMLIT_PORT% " ^| findstr LISTENING 2^>nul') do (
-    echo Found existing process on port %STREAMLIT_PORT% (PID %%a) - killing...
-    taskkill /PID %%a /F >nul 2>&1
-)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Get-NetTCPConnection -LocalPort %STREAMLIT_PORT% -State Listen -ErrorAction Stop | ForEach-Object { try { Stop-Process -Id $_.OwningProcess -Force -ErrorAction Stop; Write-Host ('Killed previous process on port %STREAMLIT_PORT% PID=' + $_.OwningProcess) } catch {} } } catch {}" 2>nul
 
 echo.
 echo ============================================================
