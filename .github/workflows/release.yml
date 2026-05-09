@@ -97,18 +97,23 @@ jobs:
           mkdir -p bundle/.config
 
       # ---------- 4. Add per-OS launcher ----------
+      # Launchers (Start.bat / Start.command) live at the repo root - same files
+      # devs use locally - so the bundle and source tree are structurally
+      # identical. README-FIRST.txt is bundle-only (end-user instructions).
       - name: Add Windows launcher
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Copy-Item build/win/Start.bat bundle/Start.bat
-          Copy-Item build/win/README-FIRST.txt bundle/README-FIRST.txt -ErrorAction SilentlyContinue
+          Copy-Item Start.bat bundle/Start.bat
+          if (Test-Path "build/win/README-FIRST.txt") {
+              Copy-Item build/win/README-FIRST.txt bundle/README-FIRST.txt
+          }
 
       - name: Add macOS launcher
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cp build/mac/Start.command bundle/Start.command
+          cp Start.command bundle/Start.command
           chmod +x bundle/Start.command
           cp build/mac/README-FIRST.txt bundle/README-FIRST.txt 2>/dev/null || true
 

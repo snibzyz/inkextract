@@ -74,15 +74,23 @@ workspace/
 
 ## 🛠️ Developer setup (สำหรับคนที่อยากแก้โค้ด)
 
-ถ้าจะ contribute หรือรันจาก source โดยตรง:
+Launcher ตัวเดียว (`Start.bat` / `Start.command`) ใช้ได้ทั้ง dev และ user — ฉลาดพอจะตรวจ environment เอง:
+
+```
+1. มี python/        ?  → ใช้ตัวที่ bundle มาให้  (โหมด end-user)
+2. มี .venv/         ?  → ใช้ venv                (โหมด dev)
+3. fallback          →  ใช้ system Python + เตือน
+```
+
+ขั้นตอนตั้งครั้งแรก (dev clone source):
 
 ### Windows
 ```powershell
 git clone https://github.com/snibzyz/inkextract
 cd inkextract
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r .app\requirements.txt
-.venv\Scripts\python.exe -m streamlit run .app\app.py
+.venv\Scripts\pip install -r .app\requirements.txt
+# จากนี้กด Start.bat รันได้เลย เหมือน user
 ```
 
 ### macOS / Linux
@@ -90,8 +98,8 @@ python -m venv .venv
 git clone https://github.com/snibzyz/inkextract
 cd inkextract
 python3 -m venv .venv
-.venv/bin/python -m pip install -r .app/requirements.txt
-.venv/bin/python -m streamlit run .app/app.py
+.venv/bin/pip install -r .app/requirements.txt
+# จากนี้ Start.command รันได้เลย เหมือน user
 ```
 
 ---
