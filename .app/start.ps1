@@ -1,4 +1,6 @@
-# -*- coding: utf-8 -*-
+# ASCII-only on purpose: Windows PowerShell 5.1 reads .ps1 as ANSI when no BOM
+# is present, which corrupts non-ASCII text and breaks the parser. Keep this
+# file 100% ASCII so it runs reliably on any Windows machine / locale.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -6,32 +8,31 @@ Set-Location $PSScriptRoot\..
 
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
     Write-Host ""
-    Write-Host "[X] ยังไม่ได้ติดตั้ง" -ForegroundColor Red
+    Write-Host "[X] Not installed yet" -ForegroundColor Red
     Write-Host ""
-    Write-Host "กรุณาดับเบิลคลิกไฟล์  ติดตั้ง.bat  ก่อน" -ForegroundColor Yellow
+    Write-Host "Please double-click the install .bat first." -ForegroundColor Yellow
     Write-Host ""
-    Read-Host "กดปุ่ม Enter เพื่อปิด"
+    Read-Host "Press Enter to close"
     exit 1
 }
 
 # ============================================================
-# AUTO-UPDATE: ตรวจสอบและดาวน์โหลด update จาก GitHub releases API
-# - ไม่ต้อง Git installed
-# - ทำงานเงียบ ๆ — fail ก็ข้ามไปรันได้
+# AUTO-UPDATE: check and download updates from the GitHub releases API.
+# - No Git required
+# - Runs silently; on failure we just continue and launch the app
 # ============================================================
 function Invoke-AutoUpdate {
     try {
-        Write-Host "🔄 กำลังเช็คอัปเดต..." -ForegroundColor DarkCyan
+        Write-Host "Checking for updates..." -ForegroundColor DarkCyan
         & ".venv\Scripts\python.exe" -m ".app.updater" 2>&1 | Out-Null
-        
-        # ถ้า requirements.txt มีการเปลี่ยนแปลง (หรือเพื่อความปลอดภัย)
-        # → re-install package
+
+        # Re-install requirements as a safety net in case they changed.
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "📦 requirements.txt re-installing (to be safe)..." -ForegroundColor Cyan
+            Write-Host "Re-installing requirements (safety check)..." -ForegroundColor Cyan
             & ".venv\Scripts\python.exe" -m pip install -r ".app\requirements.txt" --quiet 2>&1 | Out-Null
         }
     } catch {
-        # เงียบไว้ — ไม่ให้ auto-update มาขัดการเปิดโปรแกรม
+        # Stay silent - we never want auto-update to block app startup.
     }
 }
 
@@ -39,13 +40,13 @@ Invoke-AutoUpdate
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host "        INKEXTRACT — เครื่องมือจัดการนิยายแปล" -ForegroundColor Yellow
+Write-Host "        INKEXTRACT - Translation Toolkit" -ForegroundColor Yellow
 Write-Host "============================================================"
-Write-Host "กำลังเปิดโปรแกรม..."
-Write-Host "รอสักครู่ เบราว์เซอร์จะเปิดอัตโนมัติ"
+Write-Host "Starting app..."
+Write-Host "Please wait - your browser will open automatically."
 Write-Host ""
-Write-Host "(ถ้าไม่เปิดเอง คัดลอก URL ด้านล่างไปวางในเบราว์เซอร์)" -ForegroundColor Yellow
-Write-Host "ปิดโปรแกรม: กด Ctrl+C" -ForegroundColor Yellow
+Write-Host "(If it does not open, copy the URL shown below into a browser.)" -ForegroundColor Yellow
+Write-Host "To quit: press Ctrl+C" -ForegroundColor Yellow
 Write-Host "============================================================"
 Write-Host ""
 
