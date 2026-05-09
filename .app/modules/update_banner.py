@@ -110,9 +110,14 @@ def render() -> None:
         if state["phase"] == "idle" and release:
             cols = st.columns([0.78, 0.22])
             with cols[0]:
+                size_mb = (release.get("size") or 0) / (1024 * 1024)
+                size_text = f" · ~{size_mb:.0f} MB" if size_mb > 0.5 else ""
+                kind = release.get("kind") or "source"
+                kind_label = "อัปเดตเต็ม (รวม Python + libs)" if kind == "bundle" else "อัปเดตโค้ดเท่านั้น"
                 st.markdown(
                     f"**:material/system_update: มีเวอร์ชันใหม่:** "
-                    f"`{read_version()}` → **`{release['latest']}`**"
+                    f"`{read_version()}` → **`{release['latest']}`**  \n"
+                    f":small[{kind_label}{size_text}]"
                 )
                 with st.expander("รายละเอียดอัปเดต", expanded=False):
                     st.markdown(release.get("body") or "_(ไม่มีรายละเอียด)_")

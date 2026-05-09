@@ -25,6 +25,7 @@ Layout while an update is pending:
 from __future__ import annotations
 
 import argparse
+import platform
 import shutil
 import sys
 import zipfile
@@ -52,8 +53,35 @@ READY_FLAG = PENDING_DIR / "READY"
 
 RELEASES_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 
-# Folders we never overwrite during update merge
-SKIP_DIRS = {".git", ".venv", "workspace", ".config", "__pycache__", ".update_pending", "python"}
+# Folders we never overwrite during update merge.
+# Note: 'python' is in this set when applying a SOURCE update (zipball), but
+# we deliberately allow it to be replaced when applying a BUNDLE update -
+# see apply_staged() which detects the bundle case from a marker file.
+SKIP_DIRS_SOURCE = {".git", ".venv", "workspace", ".config", "__pycache__", ".update_pending", "python"}
+SKIP_DIRS_BUNDLE = {".git", ".venv", "workspace", ".config", "__pycache__", ".update_pending"}
+
+# Marker file written into staged/ to distinguish bundle vs source updates
+_KIND_MARKER = ".update_kind"
+
+
+def _bundle_asset_name() -> Optional[str]:
+    """Pick the right release asset name for this OS+arch.
+
+    Mirrors the artifact names produced by .github/workflows/release.yml.
+    Returns None if we can't identify the platform - the caller should fall
+    back to the source zipball.
+    """
+    sys_name = sys.platform
+    arch = (platform.machine() or "").lower()
+
+    if sys_name.startswith("win"):
+        return "INKEXTRACT-windows-x64.zip"
+    if sys_name == "darwin":
+        if arch in ("arm64", "aarch64"):
+            return "INKEXTRACT-macos-arm64.zip"
+        if arch in ("x86_64", "amd64"):
+            return "INKEXTRACT-macos-x64.zip"
+    return None
 
 ProgressCb = Callable[[float, str], None]  # (fraction 0..1, status text)
 
@@ -90,14 +118,13 @@ def _is_newer(remote_tag: str, local: str) -> bool:
 def check_for_update(timeout: float = 5.0) -> Optional[dict]:
     """Poll GitHub releases. Returns None if up-to-date or offline.
 
-    On update available:
-        {
-            "current": "1.0.2",
-            "latest": "v1.0.3",
-            "url": "https://api.github.com/.../zipball/v1.0.3",
-            "body": "<release notes markdown>",
-            "html_url": "https://github.com/.../releases/tag/v1.0.3",
-        }
+    On update available, prefers the platform-specific bundle asset
+    (INKEXTRACT-<os>-<arch>.zip) which contains everything including the
+    bundled Python interpreter and libs - so a release that bumps
+    requirements.txt or the Python version still updates cleanly. Falls
+    back to the source zipball if no matching asset exists (e.g. running
+    on Linux, or against an old release made before bundle artifacts
+    existed).
     """
     if not requests or not pkg_version:
         return None
@@ -113,10 +140,30 @@ def check_for_update(timeout: float = 5.0) -> Optional[dict]:
     if not _is_newer(tag, current):
         return None
 
+    # Prefer platform-specific bundle asset
+    asset_name = _bundle_asset_name()
+    asset_url = ""
+    asset_size = 0
+    if asset_name:
+        for a in data.get("assets") or []:
+            if a.get("name") == asset_name:
+                asset_url = a.get("browser_download_url") or ""
+                asset_size = int(a.get("size") or 0)
+                break
+
+    if asset_url:
+        kind = "bundle"
+        url = asset_url
+    else:
+        kind = "source"
+        url = data.get("zipball_url") or ""
+
     return {
         "current": current,
         "latest": tag,
-        "url": data.get("zipball_url") or "",
+        "url": url,
+        "kind": kind,
+        "size": asset_size,
         "body": data.get("body") or "",
         "html_url": data.get("html_url") or "",
     }
@@ -141,9 +188,10 @@ def download_and_stage(release: dict, on_progress: Optional[ProgressCb] = None) 
     cb = on_progress or (lambda f, msg: None)
     url = release.get("url") or ""
     tag = release.get("latest") or "unknown"
+    kind = release.get("kind") or "source"
 
     if not url:
-        return {"ok": False, "error": "no zipball url"}
+        return {"ok": False, "error": "no download url"}
 
     try:
         # Clean any previous pending state
@@ -178,13 +226,13 @@ def download_and_stage(release: dict, on_progress: Optional[ProgressCb] = None) 
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(extract_root)
 
-        # GitHub zipball wraps everything in <owner>-<repo>-<sha>/
+        # Both source zipball and bundle zip wrap everything in one top-level dir.
         children = [p for p in extract_root.iterdir() if p.is_dir()]
         if not children:
             return {"ok": False, "error": "zip is empty"}
         src_root = children[0]
 
-        # ---- stage (copy into staged/, skipping volatile dirs) ----
+        # ---- stage: copy everything (apply_staged decides what to skip during merge) ----
         cb(0.85, "Staging files...")
         if STAGED_DIR.exists():
             shutil.rmtree(STAGED_DIR, ignore_errors=True)
@@ -192,8 +240,6 @@ def download_and_stage(release: dict, on_progress: Optional[ProgressCb] = None) 
 
         def copy_tree(src: Path, dst: Path) -> None:
             for item in src.iterdir():
-                if item.name in SKIP_DIRS:
-                    continue
                 target = dst / item.name
                 if item.is_dir():
                     target.mkdir(exist_ok=True)
@@ -202,6 +248,9 @@ def download_and_stage(release: dict, on_progress: Optional[ProgressCb] = None) 
                     shutil.copy2(item, target)
 
         copy_tree(src_root, STAGED_DIR)
+
+        # Drop a marker so apply_staged knows whether to overwrite python/
+        (STAGED_DIR / _KIND_MARKER).write_text(kind, encoding="utf-8")
 
         # cleanup intermediate
         shutil.rmtree(extract_root, ignore_errors=True)
@@ -214,7 +263,7 @@ def download_and_stage(release: dict, on_progress: Optional[ProgressCb] = None) 
         READY_FLAG.write_text(tag, encoding="utf-8")
 
         cb(1.0, f"Ready - restart to apply {tag}")
-        return {"ok": True, "tag": tag}
+        return {"ok": True, "tag": tag, "kind": kind}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -235,25 +284,43 @@ def apply_staged() -> int:
     except Exception:
         pass
 
-    print(f"[updater] Applying staged update {tag}...")
+    # Decide what to skip based on what was staged: bundle updates (full
+    # platform zip) get to overwrite python/ as well, source updates do not.
+    kind_file = STAGED_DIR / _KIND_MARKER
+    kind = "source"
+    try:
+        if kind_file.exists():
+            kind = kind_file.read_text(encoding="utf-8").strip() or "source"
+    except Exception:
+        pass
 
-    def merge(src: Path, dst: Path) -> None:
+    skip = SKIP_DIRS_BUNDLE if kind == "bundle" else SKIP_DIRS_SOURCE
+    print(f"[updater] Applying staged {kind} update {tag}...")
+
+    def merge(src: Path, dst: Path, top: bool = False) -> None:
         for item in src.iterdir():
+            # Don't copy our own kind-marker file across into the live tree
+            if top and item.name == _KIND_MARKER:
+                continue
+            # Top-level skip rules protect user data and (for source updates) python/
+            if top and item.name in skip:
+                continue
             target = dst / item.name
             if item.is_dir():
                 target.mkdir(exist_ok=True)
-                merge(item, target)
+                merge(item, target, top=False)
             else:
-                # overwrite existing files
                 try:
                     if target.exists():
                         target.unlink()
                 except Exception:
+                    # If we can't delete (e.g. file is locked), shutil.copy2
+                    # will raise below and we surface a clear error.
                     pass
                 shutil.copy2(item, target)
 
     try:
-        merge(STAGED_DIR, ROOT_DIR)
+        merge(STAGED_DIR, ROOT_DIR, top=True)
         if tag:
             write_version(tag)
         print(f"[updater] Update {tag} applied.")
