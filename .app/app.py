@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 import inspect
 import pandas as pd
-from modules import paths, ui
+from modules import paths, ui, project_manager
 from modules.proofreader import NovelProofreader
 from modules.file_processor import FileProcessor
 from modules.merge_processor import MergeProcessor
@@ -15,18 +15,25 @@ from modules.preferences_manager import preferences_manager
 from modules.format_checker import FormatChecker
 from modules import manuscript_checker
 from modules.tabs import manuscript as tab_manuscript_module
+from modules.tabs import project as tab_project_module
 from modules import update_banner
 
-# ตั้งค่าหน้าและ theme INKEXTRACT
-ui.page_setup(page_title=ui.APP_NAME, page_icon="🟠")
-
+# ตั้งค่าหน้าและธีม INKEXTRACT — ปล่อย page_icon ว่างให้ ui.page_setup
+# auto-resolve โลโก้ inkideaex.png (อยู่ใน .app/) มาเป็น tab icon ของ browser
+ui.page_setup(page_title=ui.APP_NAME)
 
 
 def main():
+    # คืนค่าโปรเจกต์ที่ใช้งานล่าสุดจาก registry (idempotent)
+    project_manager.restore_active_on_startup()
+
     ui.header()
     update_banner.render()
-    
-    # สร้าง instance ของ processors
+
+    # แถบโปรเจกต์ที่ใช้งาน — แสดงเหนือ tabs ตลอด
+    tab_project_module.render_active_bar()
+
+    # สร้าง instance ของ processors (re-init ถ้า session_state ถูก clear ตอนสลับ project)
     if 'proofreader' not in st.session_state:
         st.session_state.proofreader = NovelProofreader()
     if 'file_processor' not in st.session_state:
@@ -75,18 +82,22 @@ def main():
     st.markdown("---")
 
     # Tabs หลัก — :material/<icon>: syntax (Streamlit 1.34+)
-    tab_manuscript, tab_vocab, tab_proof, tab_files = st.tabs([
+    tab_project, tab_manuscript, tab_vocab, tab_proof, tab_files = st.tabs([
+        ":material/folder_special: โปรเจกต์",
         ":material/fact_check: ตรวจต้นฉบับ",
         ":material/menu_book: คำศัพท์",
         ":material/spellcheck: ตรวจสอบและแก้ไข",
         ":material/folder: จัดการไฟล์",
     ])
 
+    with tab_project:
+        tab_project_module.render()
+
     with tab_manuscript:
         tab_manuscript_module.render()
-    
-    
-    # Vocab Tab — ใช้ unified parser แล้ว (auto-detect ทุก format ในไฟล์เดียวกัน)
+
+
+    # แท็บคำศัพท์ — auto-detect ทุก format ในไฟล์เดียวกัน
     with tab_vocab:
         from modules.tabs import vocab as tab_vocab_module
         tab_vocab_module.render(vocab_processor)

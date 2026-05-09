@@ -26,7 +26,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
     if conversion_mode == " DOCX → TXT":
         # DOCX to TXT Mode
         st.markdown("####  แปลงไฟล์ DOCX เป็น TXT")
-        st.info(" แปลงไฟล์ Word (.docx) เป็น Text (.txt) จากโฟลเดอร์ `0-input` พร้อมรักษาโครงสร้าง subfolder")
+        st.info(" แปลงไฟล์ Word (.docx) เป็น Text (.txt) จากโฟลเดอร์ `Input` พร้อมรักษาโครงสร้าง subfolder")
 
         # สถิติไฟล์
         docx_stats = docx_converter.get_file_stats()
@@ -43,7 +43,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
             st.metric(" ขนาด DOCX", f"{docx_size_mb:.1f} MB")
 
         with col4:
-            st.metric(" Subfolders", docx_stats['subfolders'])
+            st.metric(" โฟลเดอร์ย่อย", docx_stats['subfolders'])
 
         st.markdown("---")
 
@@ -54,7 +54,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
 
         with col_left:
             st.markdown("** โฟลเดอร์ต้นทาง**")
-            st.info(" ต้นทาง: `0-input`")
+            st.info(" ต้นทาง: `Input`")
             st.caption("ค้นหาไฟล์ .docx ทั้งหมด (รวม subfolder)")
 
             # แสดงจำนวนไฟล์
@@ -142,7 +142,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
         with col_help1:
             st.markdown("""
             ** การใช้งาน:**
-            - วางไฟล์ .docx ในโฟลเดอร์ `0-input`
+            - วางไฟล์ .docx ในโฟลเดอร์ `Input`
             - รองรับ subfolder (เช่น 0-input/novel1/chapter1.docx)
             - แปลงเป็น text ธรรมดา (เหมือน copy-paste)
             - รักษาโครงสร้างโฟลเดอร์เดิม
@@ -183,7 +183,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
     elif conversion_mode == " TXT/MD → DOCX":
         # TXT/MD to DOCX Mode
         st.markdown("####  แปลงไฟล์ TXT/MD เป็น DOCX")
-        st.info("แปลงไฟล์ .txt หรือ .md จากโฟลเดอร์ `2-clean` เป็น Word (.docx) — บันทึก in-place ใน `2-clean` เดิม")
+        st.info("แปลงไฟล์ .txt หรือ .md จากโฟลเดอร์ `Clean` เป็น Word (.docx) — บันทึก in-place ใน `Clean` เดิม")
 
         # สถิติไฟล์
         txt_md_stats = docx_converter.get_txt_md_stats()
@@ -208,7 +208,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
 
         with col_left:
             st.markdown("** โฟลเดอร์ต้นทาง**")
-            st.info(" ต้นทาง: `2-clean`")
+            st.info(" ต้นทาง: `Clean`")
             st.caption("ค้นหาไฟล์ .txt และ .md ทั้งหมด")
 
             # แสดงจำนวนไฟล์
@@ -219,7 +219,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
 
         with col_right:
             st.markdown("**โฟลเดอร์ปลายทาง**")
-            st.info("ปลายทาง: `2-clean` (in-place)")
+            st.info("ปลายทาง: `Clean` (in-place)")
             st.caption("บันทึก .docx ลงในโฟลเดอร์เดียวกับ source")
 
         st.markdown("---")
@@ -268,8 +268,8 @@ def render(md_converter, docx_converter, file_processor) -> None:
         with col_help1:
             st.markdown("""
             **การใช้งาน:**
-            - แปลงไฟล์ .txt หรือ .md จากโฟลเดอร์ `2-clean`
-            - บันทึกเป็น .docx ในโฟลเดอร์ `2-clean` เดียวกัน (in-place)
+            - แปลงไฟล์ .txt หรือ .md จากโฟลเดอร์ `Clean`
+            - บันทึกเป็น .docx ในโฟลเดอร์ `Clean` เดียวกัน (in-place)
             - รองรับทั้งไฟล์ TXT และ MD
             - แปลงทีละหลายไฟล์พร้อมกัน
             """)
@@ -310,7 +310,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
     else:
         # TXT ↔ MD Mode (existing code)
         st.markdown("####  เปลี่ยนนามสกุลไฟล์ TXT ↔ MD")
-        st.info(" เปลี่ยนนามสกุลไฟล์ระหว่าง .txt และ .md ใน-place ที่โฟลเดอร์ `2-clean` (แปลงไฟล์โดยตรง ไม่คัดลอก)")
+        st.info(" เปลี่ยนนามสกุลไฟล์ระหว่าง .txt และ .md ใน-place ที่โฟลเดอร์ `Clean` (แปลงไฟล์โดยตรง ไม่คัดลอก)")
 
         # สถิติไฟล์
         stats = md_converter.get_file_stats()
@@ -341,12 +341,12 @@ def render(md_converter, docx_converter, file_processor) -> None:
             st.markdown("** ประเภทไฟล์ที่ต้องการแปลง**")
             source_folder = st.selectbox(
             "เลือกประเภทไฟล์:",
-                options=["2-clean (TXT)", "2-clean (MD)"],
+                options=["Clean (TXT)", "Clean (MD)"],
                 index=0,
                 help="เลือกไฟล์ในโฟลเดอร์ 2-clean ที่ต้องการแปลง (แปลงใน-place)"
             )
 
-            if source_folder == "2-clean (TXT)":
+            if source_folder == "Clean (TXT)":
                 source_path = md_converter.clean_dir
                 target_path = md_converter.clean_dir  # in-place conversion
                 conversion_type = "TXT → MD"
@@ -361,16 +361,16 @@ def render(md_converter, docx_converter, file_processor) -> None:
 
         with col_right:
             st.markdown("** การแปลง**")
-            if source_folder == "2-clean (TXT)":
-                st.info(" แปลงใน-place ที่ `2-clean`")
+            if source_folder == "Clean (TXT)":
+                st.info(" แปลงใน-place ที่ `Clean`")
                 st.caption("เปลี่ยนนามสกุล .txt → .md โดยตรงในโฟลเดอร์เดิม")
             else:
-                st.info(" แปลงใน-place ที่ `2-clean`")
+                st.info(" แปลงใน-place ที่ `Clean`")
                 st.caption("เปลี่ยนนามสกุล .md → .txt โดยตรงในโฟลเดอร์เดิม")
 
             # แสดงจำนวนไฟล์ในโฟลเดอร์ต้นทาง
             if source_path.exists():
-                files_count = len(list(source_path.glob("*.txt" if source_folder == "2-clean (TXT)" else "*.md")))
+                files_count = len(list(source_path.glob("*.txt" if source_folder == "Clean (TXT)" else "*.md")))
                 if files_count > 0:
                     st.success(f" พบ {files_count} ไฟล์พร้อมแปลง")
                 else:
@@ -384,7 +384,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
             st.markdown("####  ตัวอย่างไฟล์")
 
             # กำหนด extension ที่ต้องการดู
-            file_ext = "txt" if source_folder == "2-clean (TXT)" else "md"
+            file_ext = "txt" if source_folder == "Clean (TXT)" else "md"
             preview_data = md_converter.preview_conversion(source_path, 5, file_ext)
             if 'error' not in preview_data and preview_data['files']:
                 st.info(f" **โฟลเดอร์**: `{preview_data['directory']}` ({preview_data['total_files']} ไฟล์)")
@@ -402,7 +402,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
 
         with col_btn1:
             if st.button(button_text, type=button_color, width='stretch'):
-                if source_folder == "2-clean (TXT)":
+                if source_folder == "Clean (TXT)":
                     # เปลี่ยนนามสกุล TXT เป็น MD (in-place)
                     with st.spinner("กำลังเปลี่ยนนามสกุล TXT เป็น MD ใน-place..."):
                         result = md_converter.convert_txt_to_md(in_place=True)
@@ -448,7 +448,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
             st.markdown("""
             ** TXT → MD:**
             - เปลี่ยนนามสกุลไฟล์จาก .txt เป็น .md
-            - แปลงใน-place ที่โฟลเดอร์ `2-clean`
+            - แปลงใน-place ที่โฟลเดอร์ `Clean`
             - แก้ปัญหาบรรทัดติดกันในไฟล์
             - เหมาะสำหรับการอ่านบนหน้าจอ
             """)
@@ -457,7 +457,7 @@ def render(md_converter, docx_converter, file_processor) -> None:
             st.markdown("""
             ** MD → TXT:**
             - เปลี่ยนนามสกุลไฟล์จาก .md กลับเป็น .txt
-            - แปลงใน-place ที่โฟลเดอร์ `2-clean`
+            - แปลงใน-place ที่โฟลเดอร์ `Clean`
             - แก้ปัญหาบรรทัดติดกันในไฟล์
             - เหมาะสำหรับการประมวลผลต่อ
             """)

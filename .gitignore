@@ -4,7 +4,11 @@
 workspace/**
 !workspace/
 !workspace/*/
+!workspace/**/
 !workspace/**/.gitkeep
+
+# User projects (multi-project mode) — ทั้งหมดเป็นข้อมูลผู้ใช้ ไม่ commit
+projects/
 
 # ============================================================
 # Local environment / build artifacts
@@ -25,6 +29,8 @@ __pycache__/
 .config/user_preferences.json
 .config/novel_list.txt
 .config/ocr_settings.json
+.config/projects.json
+.config/app.log
 # .config/exclude.txt → keep (default template)
 
 # ============================================================

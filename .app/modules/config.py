@@ -32,6 +32,22 @@ class AppConfig:
     def __post_init__(self):
         paths.ensure_dirs()
 
+    def reload_paths(self) -> None:
+        """Re-resolve all path attributes from current paths.* module state.
+
+        Call after switching active project (project_manager.set_active_project)
+        so that this singleton points at the new project's folders.
+        """
+        self.input_dir = paths.INPUT_DIR
+        self.output_dir = paths.OUTPUT_DIR
+        self.fix_dir = paths.FIX_DIR
+        self.clean_dir = paths.CLEAN_DIR
+        self.merge_dir = paths.MERGE_DIR
+        self.separate_dir = paths.SEPARATE_DIR
+        self.md_dir = paths.CLEAN_DIR
+        self.exclude_file = paths.EXCLUDE_FILE
+        paths.ensure_dirs()
+
 def load_exclude_patterns() -> List[str]:
     """โหลด exclude patterns จากไฟล์ exclude.txt"""
     patterns = []

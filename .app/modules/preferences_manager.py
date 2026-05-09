@@ -50,13 +50,13 @@ class PreferencesManager:
                     "check_foreign_languages": True,
                     "check_numbers": False,
                     "check_english": False,
-                    "source_folder": "2-clean"
+                    "source_folder": "Clean"
                 }
             },
             "file_processing": {
                 "merge_settings": {
                     "input_folder_mode": "ใช้โฟลเดอร์แนะนำ",
-                    "input_folder_recommended": "2-clean (แนะนำ)",
+                    "input_folder_recommended": "Clean (แนะนำ)",
                     "output_folder_mode": "ใช้โฟลเดอร์แนะนำ",
                     "chapters_per_file": 5,
                     "focus_keyword": "###",
@@ -89,15 +89,15 @@ class PreferencesManager:
                 }
             },
             "converter_settings": {
-                "source_folder": "2-clean (TXT)"
+                "source_folder": "Clean (TXT)"
             },
             "clear_settings": {
                 "selected_folders": {
-                    "0-input": True,
-                    "1-fix": True,
-                    "2-clean": True,
-                    "3-merge": False,
-                    "4-separate": False
+                    "Input": True,
+                    "Fix": True,
+                    "Clean": True,
+                    "Merge": False,
+                    "Separate": False
                 }
             },
             "vocab_settings": {

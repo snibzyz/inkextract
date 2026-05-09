@@ -292,9 +292,9 @@ def _render_preview(scan, sorted_entries):
                 content = content[:CAP]
                 truncated = True
 
-            # wrap st.code() ใน div ที่ใส่ขอบมน + ขอบล่างให้เข้ากับ pane-header
+            # ความสูงเท่ากับฝั่งซ้าย (560) เพื่อ alignment แบบ VS-Code
             st.markdown('<div class="ms-preview-wrap">', unsafe_allow_html=True)
-            st.code(content, language=None, line_numbers=True, height=520)
+            st.code(content, language=None, line_numbers=True, height=560)
             st.markdown('</div>', unsafe_allow_html=True)
             if truncated:
                 st.caption(f"ตัดที่ {CAP:,} ตัวอักษร — ไฟล์ใหญ่กว่านี้")
@@ -345,12 +345,13 @@ def render() -> None:
         description=(
         "สแกนไฟล์ .txt — ไฟล์เล็กผิดปกติจะถูกเน้นสีแดง "
         "ติ๊กช่องสี่เหลี่ยม = เลือกลบ • คลิกชื่อ = พรีวิว • "
-        "ผลลัพธ์ออกที่ workspace/output/manuscript/raw/"
+        "ค่าตั้งต้นชี้ที่โฟลเดอร์ `Raw/` (ไฟล์ raw จีนต้นฉบับ) • "
+        "ผลลัพธ์ออกที่ `Output/manuscript/raw/`"
         ),
     ):
         pass
 
-    folder_default = st.session_state.get('manuscript_dir', str(paths.INPUT_DIR))
+    folder_default = st.session_state.get('manuscript_dir', str(paths.RAW_INPUT_DIR))
     folder_text, do_set, do_open, do_reload = _render_folder_bar(folder_default)
 
     if do_open:

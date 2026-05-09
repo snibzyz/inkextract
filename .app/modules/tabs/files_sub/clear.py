@@ -16,33 +16,33 @@ def render(file_processor) -> None:
     # สถิติไฟล์ในแต่ละโฟลเดอร์
     st.markdown("####  สถิติไฟล์ในโฟลเดอร์")
 
-    # กำหนดโฟลเดอร์และเส้นทาง (ยุบ 2-clean-docx/md เข้า 2-clean เดียวแล้ว)
+    # กำหนดโฟลเดอร์และเส้นทาง (ชื่อ INKIDEA-style PascalCase)
     folders_info = {
-        "0-input": paths.INPUT_DIR,
-        "1-fix": paths.FIX_DIR,
-        "2-clean": paths.CLEAN_DIR,
-        "3-merge": paths.MERGE_DIR,
-        "4-separate": paths.SEPARATE_DIR,
+        "Input": paths.INPUT_DIR,
+        "Raw": paths.RAW_INPUT_DIR,
+        "Fix": paths.FIX_DIR,
+        "Clean": paths.CLEAN_DIR,
+        "Merge": paths.MERGE_DIR,
+        "Separate": paths.SEPARATE_DIR,
+        "Import": paths.IMPORT_FIX_DIR,
     }
 
     # แสดงสถิติไฟล์
-    col1, col2, col3 = st.columns(3)
+    def _count(folder_path):
+        return len(list(folder_path.glob("*"))) if folder_path.exists() else 0
 
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        input_count = len(list(folders_info["0-input"].glob("*"))) if folders_info["0-input"].exists() else 0
-        fix_count = len(list(folders_info["1-fix"].glob("*"))) if folders_info["1-fix"].exists() else 0
-        st.metric("0-input", input_count)
-        st.metric("1-fix", fix_count)
-
+        st.metric("Input", _count(folders_info["Input"]))
+        st.metric("Raw", _count(folders_info["Raw"]))
     with col2:
-        clean_count = len(list(folders_info["2-clean"].glob("*"))) if folders_info["2-clean"].exists() else 0
-        st.metric("2-clean", clean_count)
-
+        st.metric("Fix", _count(folders_info["Fix"]))
+        st.metric("Clean", _count(folders_info["Clean"]))
     with col3:
-        merge_count = len(list(folders_info["3-merge"].glob("*"))) if folders_info["3-merge"].exists() else 0
-        separate_count = len(list(folders_info["4-separate"].glob("*"))) if folders_info["4-separate"].exists() else 0
-        st.metric("3-merge", merge_count)
-        st.metric("4-separate", separate_count)
+        st.metric("Merge", _count(folders_info["Merge"]))
+        st.metric("Separate", _count(folders_info["Separate"]))
+    with col4:
+        st.metric("Import", _count(folders_info["Import"]))
 
     st.markdown("---")
 
@@ -50,14 +50,25 @@ def render(file_processor) -> None:
     st.markdown("#### เลือกโฟลเดอร์ที่ต้องการลบ")
 
     # ใช้ session state เพื่อจำค่าการเลือก
+    _DEFAULT_CLEAR_SELECTION = {
+        "Input": True,
+        "Raw": False,  # ต้นฉบับล้ำค่า — ปิดไว้เป็น default
+        "Fix": True,
+        "Clean": True,
+        "Merge": False,
+        "Separate": False,
+        "Import": False,
+    }
     if 'clear_folders_selection' not in st.session_state:
-        st.session_state.clear_folders_selection = {
-            "0-input": True,
-            "1-fix": True,
-            "2-clean": True,
-            "3-merge": False,
-            "4-separate": False,
-        }
+        st.session_state.clear_folders_selection = dict(_DEFAULT_CLEAR_SELECTION)
+    else:
+        # เติม keys ใหม่ที่ยังไม่มีใน state เก่า (กัน KeyError ตอน upgrade)
+        for k, v in _DEFAULT_CLEAR_SELECTION.items():
+            st.session_state.clear_folders_selection.setdefault(k, v)
+        # ลบ keys เก่า (legacy lowercase) ออก
+        for legacy_key in list(st.session_state.clear_folders_selection.keys()):
+            if legacy_key not in _DEFAULT_CLEAR_SELECTION:
+                st.session_state.clear_folders_selection.pop(legacy_key, None)
 
     # แบ่งเป็น 2 columns
     col_left, col_right = st.columns([1, 1])
@@ -66,42 +77,56 @@ def render(file_processor) -> None:
         st.markdown("**โฟลเดอร์หลัก**")
 
         input_selected = st.checkbox(
-            "0-input (ไฟล์ต้นฉบับ)",
-            value=st.session_state.clear_folders_selection["0-input"],
-            help="ลบไฟล์ต้นฉบับในโฟลเดอร์ 0-input",
+            "Input (ไฟล์แปลตั้งต้น)",
+            value=st.session_state.clear_folders_selection["Input"],
+            help="ลบไฟล์แปลในโฟลเดอร์ Input",
         )
-        st.session_state.clear_folders_selection["0-input"] = input_selected
+        st.session_state.clear_folders_selection["Input"] = input_selected
+
+        raw_selected = st.checkbox(
+            "Raw (ไฟล์ raw จีนต้นฉบับ)",
+            value=st.session_state.clear_folders_selection["Raw"],
+            help="ลบไฟล์ raw จีนต้นฉบับ — ระวัง ข้อมูลตั้งต้น",
+        )
+        st.session_state.clear_folders_selection["Raw"] = raw_selected
 
         fix_selected = st.checkbox(
-            "1-fix (ไฟล์แก้ไข)",
-            value=st.session_state.clear_folders_selection["1-fix"],
-            help="ลบไฟล์ที่แก้ไขแล้วในโฟลเดอร์ 1-fix",
+            "Fix (ไฟล์ที่แก้ไขแล้ว)",
+            value=st.session_state.clear_folders_selection["Fix"],
+            help="ลบไฟล์ที่แก้ไขแล้วในโฟลเดอร์ Fix",
         )
-        st.session_state.clear_folders_selection["1-fix"] = fix_selected
+        st.session_state.clear_folders_selection["Fix"] = fix_selected
 
         clean_selected = st.checkbox(
-            "2-clean (ไฟล์สะอาด — รวม .txt/.md/.docx)",
-            value=st.session_state.clear_folders_selection["2-clean"],
-            help="ลบไฟล์ทุกชนิดในโฟลเดอร์ 2-clean",
+            "Clean (ไฟล์ที่ทำความสะอาด — รวม .txt/.md/.docx)",
+            value=st.session_state.clear_folders_selection["Clean"],
+            help="ลบไฟล์ทุกชนิดในโฟลเดอร์ Clean",
         )
-        st.session_state.clear_folders_selection["2-clean"] = clean_selected
+        st.session_state.clear_folders_selection["Clean"] = clean_selected
 
     with col_right:
         st.markdown("**โฟลเดอร์ผลลัพธ์**")
 
         merge_selected = st.checkbox(
-            "3-merge (ไฟล์รวม)",
-            value=st.session_state.clear_folders_selection["3-merge"],
-            help="ลบไฟล์ที่รวมแล้วในโฟลเดอร์ 3-merge",
+            "Merge (ไฟล์ที่รวมแล้ว)",
+            value=st.session_state.clear_folders_selection["Merge"],
+            help="ลบไฟล์ที่รวมแล้วในโฟลเดอร์ Merge",
         )
-        st.session_state.clear_folders_selection["3-merge"] = merge_selected
+        st.session_state.clear_folders_selection["Merge"] = merge_selected
 
         separate_selected = st.checkbox(
-            "4-separate (ไฟล์แยก)",
-            value=st.session_state.clear_folders_selection["4-separate"],
-            help="ลบไฟล์ที่แยกแล้วในโฟลเดอร์ 4-separate",
+            "Separate (ไฟล์ที่แยกตอนแล้ว)",
+            value=st.session_state.clear_folders_selection["Separate"],
+            help="ลบไฟล์ที่แยกตอนในโฟลเดอร์ Separate",
         )
-        st.session_state.clear_folders_selection["4-separate"] = separate_selected
+        st.session_state.clear_folders_selection["Separate"] = separate_selected
+
+        import_selected = st.checkbox(
+            "Import (ไฟล์ที่ผู้ใช้แก้กลับ — สำหรับ import)",
+            value=st.session_state.clear_folders_selection["Import"],
+            help="ลบไฟล์ใน Import (ไฟล์ที่ผู้ใช้แก้กลับมาก่อน import)",
+        )
+        st.session_state.clear_folders_selection["Import"] = import_selected
 
     # ปุ่มรีเซ็ตการเลือก
     st.markdown("---")
@@ -109,13 +134,7 @@ def render(file_processor) -> None:
 
     with col_reset1:
         if st.button("รีเซ็ตเป็นค่าเริ่มต้น", width='stretch'):
-            st.session_state.clear_folders_selection = {
-                "0-input": True,
-                "1-fix": True,
-                "2-clean": True,
-                "3-merge": False,
-                "4-separate": False,
-            }
+            st.session_state.clear_folders_selection = dict(_DEFAULT_CLEAR_SELECTION)
             st.rerun()
 
     with col_reset2:

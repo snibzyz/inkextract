@@ -259,7 +259,7 @@ class FileProcessor:
             
             # แสดงรายชื่อไฟล์ที่ทำความสะอาด
             for file_path in txt_files:
-                st.write(f"  ✅ `{file_path.name}` → `2-clean/{file_path.name}`")
+                st.write(f"  `{file_path.name}` → `Clean/{file_path.name}`")
             
             if all_vocab:
                 st.write(f"  📚 `vocab.txt` (คำศัพท์ {len(all_vocab)} คำ)")

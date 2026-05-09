@@ -176,6 +176,53 @@ def render(proofreader, file_processor) -> None:
             else:
                 st.warning(" ไม่พบไฟล์ vocab ในโฟลเดอร์ `vocab`")
 
+        # ===== Missing translation scan (เทียบกับ raw จีนต้นฉบับ) =====
+        st.markdown("####  ตรวจหาบรรทัดที่ AI ข้ามแปล")
+        check_missing_translation = st.checkbox(
+            " ตรวจหาบรรทัดที่ AI ข้ามแปล (เทียบกับ raw)",
+            value=ab_mode_prefs.get("check_missing_translation", False),
+            help="เปรียบเทียบไฟล์แปลใน `0-input` กับไฟล์ raw จีนต้นฉบับ — "
+                 "หาบรรทัด raw ที่ไม่มีใน [A] block ใดๆ (smart matching ด้วย bigram similarity)",
+            key="ab_check_missing_translation"
+        )
+        if check_missing_translation != ab_mode_prefs.get("check_missing_translation", False):
+            preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                {**ab_mode_prefs, "check_missing_translation": check_missing_translation})
+            ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
+
+        raw_dir_path = ab_mode_prefs.get("raw_input_path", str(paths.RAW_INPUT_DIR))
+        min_ratio_value = float(ab_mode_prefs.get("missing_min_ratio", 0.7) or 0.7)
+
+        if check_missing_translation:
+            raw_dir_input = st.text_input(
+                "โฟลเดอร์ raw ต้นฉบับจีน:",
+                value=raw_dir_path,
+                help="วาง path ของโฟลเดอร์ raw — รองรับ sub folder ซ้อนกัน "
+                     f"(default: `{paths.RAW_INPUT_DIR}`)",
+                key="ab_raw_dir_input"
+            )
+            if raw_dir_input.strip() and raw_dir_input != raw_dir_path:
+                preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                    {**ab_mode_prefs, "raw_input_path": raw_dir_input.strip()})
+                ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
+                raw_dir_path = raw_dir_input.strip()
+            elif not raw_dir_input.strip():
+                raw_dir_path = str(paths.RAW_INPUT_DIR)
+
+            min_ratio_value = st.slider(
+                "Threshold การจับคู่ (ต่ำกว่านี้ = นับว่าหาย)",
+                min_value=0.5, max_value=0.95, step=0.05,
+                value=min_ratio_value,
+                help="ต่ำ → จับ missing น้อยลง (ทนต่อ AI paraphrase) | สูง → จับ missing เยอะขึ้น",
+                key="ab_missing_min_ratio"
+            )
+            if min_ratio_value != ab_mode_prefs.get("missing_min_ratio", 0.7):
+                preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                    {**ab_mode_prefs, "missing_min_ratio": float(min_ratio_value)})
+                ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
+
+            st.caption(f"raw dir: `{raw_dir_path}` · ratio: `{min_ratio_value:.2f}`")
+
         # Exclude Patterns
         with st.expander("การตั้งค่ารูปแบบยกเว้น (ไม่นับเป็นข้อผิดพลาด)", expanded=False):
             from modules.config import regex_patterns
@@ -287,6 +334,19 @@ def render(proofreader, file_processor) -> None:
                         check_english,
                         **analyze_files_kwargs
                     )
+
+                if check_missing_translation:
+                    raw_dir = Path(raw_dir_path).expanduser()
+                    with st.spinner(f"กำลังเทียบกับ raw ที่ `{raw_dir}`..."):
+                        n_missing = proofreader.scan_missing_translations(
+                            raw_dir,
+                            min_ratio=float(min_ratio_value),
+                        )
+                    if n_missing > 0:
+                        st.info(f"🔎 พบบรรทัดที่ AI ข้ามแปล: **{n_missing}** บรรทัด")
+                    else:
+                        st.success("ไม่พบบรรทัดที่ AI ข้ามแปล")
+
                 st.toast("วิเคราะห์เสร็จสิ้น!")
 
         with col2:
@@ -296,6 +356,9 @@ def render(proofreader, file_processor) -> None:
             if 'export_confirm' not in st.session_state:
                 st.session_state.export_confirm = False
 
+            saved_chunk_lines = int(ab_mode_prefs.get("chunk_lines", 500) or 500)
+            saved_fuzzy_ratio = float(ab_mode_prefs.get("import_fuzzy_min_ratio", 0.95) or 0.95)
+
             if not st.session_state.export_confirm:
                 if st.button("**ส่งออกเพื่อแก้ไข**", disabled=export_disabled, width='stretch'):
                     st.session_state.export_confirm = True
@@ -303,20 +366,25 @@ def render(proofreader, file_processor) -> None:
             else:
                 st.warning("ต้องการส่งออกไฟล์ error_trans.txt หรือไม่?")
 
-                # ตัวเลือกแบ่งไฟล์ — กัน token limit ของ AI
-                chunk_size = st.number_input(
-                    "แบ่งเป็นหลายไฟล์ (chunk size) — 0 = ไฟล์เดียว",
-                    min_value=0, max_value=2000, step=10, value=0,
-                    help="ถ้า > 0 จะแบ่งเป็น error_trans_001.txt, _002.txt, ... "
-                         "(ต่อไฟล์ละ N รายการ) เพื่อกัน token limit ตอนส่งให้ AI",
-                    key="export_chunk_size",
+                # ตัวเลือกแบ่งไฟล์ — กัน token limit ของ AI (split โดยจำนวนบรรทัด)
+                chunk_lines = st.number_input(
+                    "แบ่ง chunk โดยจำนวนบรรทัด (~ ต่อไฟล์) — 0 = ไม่ split",
+                    min_value=0, max_value=5000, step=50, value=saved_chunk_lines,
+                    help="เขียน master `error_trans.txt` เสมอ + ถ้าตั้ง > 0 จะแบ่งเป็น "
+                         "`error_trans_001.txt`, `_002.txt`, ... โดยห้ามตัดกลาง entry และ "
+                         "repeat headers ในทุก chunk · ค่า ~500 บรรทัด/file พอดี token AI",
+                    key="export_chunk_lines",
                 )
+                if int(chunk_lines) != saved_chunk_lines:
+                    preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                        {**ab_mode_prefs, "chunk_lines": int(chunk_lines)})
+                    ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
 
                 col_yes, col_no = st.columns(2)
                 with col_yes:
                     if st.button("ยืนยัน", type="primary", width='stretch'):
                         with st.spinner("กำลังส่งออก..."):
-                            proofreader.export_errors(chunk_size=int(chunk_size))
+                            proofreader.export_errors(chunk_lines=int(chunk_lines))
                         st.session_state.export_confirm = False
                         st.toast("ส่งออกสำเร็จ!")
                         st.rerun()
@@ -326,8 +394,28 @@ def render(proofreader, file_processor) -> None:
                         st.rerun()
 
         with col3:
+            # Fuzzy threshold slider — default แม่นๆ
+            fuzzy_threshold = st.slider(
+                "Fuzzy threshold (import)",
+                min_value=0.85, max_value=1.00, step=0.01,
+                value=saved_fuzzy_ratio,
+                help="ความเข้มข้นของ fuzzy match ตอน import กลับ — สูง = แม่น (ลด false match), "
+                     "ต่ำ = ทนต่อ AI แก้ [A] เปลี่ยนเล็กน้อย · 1.00 = exact match only · "
+                     "default 0.95 (แม่นๆ)",
+                key="import_fuzzy_threshold",
+            )
+            if abs(fuzzy_threshold - saved_fuzzy_ratio) > 1e-6:
+                preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                    {**ab_mode_prefs, "import_fuzzy_min_ratio": float(fuzzy_threshold)})
+                ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
+
             if st.button(" **นำเข้าการแก้ไข**", width='stretch'):
-                proofreader.grab_and_import_file()
+                # ส่ง threshold เข้าไปด้วย (ถ้าฟังก์ชันรองรับ — backward compat)
+                import_signature = inspect.signature(proofreader.grab_and_import_file)
+                if "fuzzy_min_ratio" in import_signature.parameters:
+                    proofreader.grab_and_import_file(fuzzy_min_ratio=float(fuzzy_threshold))
+                else:
+                    proofreader.grab_and_import_file()
 
         # Fix & Clean Actions
         st.markdown("####  การประมวลผลไฟล์")
@@ -446,13 +534,13 @@ def render(proofreader, file_processor) -> None:
         st.markdown("####  เลือกโฟลเดอร์ต้นทาง")
 
         preset_folders = {
-        "2-clean (แนะนำ)": paths.CLEAN_DIR,
-        "0-input": paths.INPUT_DIR,
-        "1-fix": paths.FIX_DIR
+        "Clean (แนะนำ)": paths.CLEAN_DIR,
+        "Input": paths.INPUT_DIR,
+        "Fix": paths.FIX_DIR
         }
 
         folder_options = list(preset_folders.keys()) + ["ระบุเส้นทางเอง"]
-        default_index = folder_options.index("2-clean (แนะนำ)") if "2-clean (แนะนำ)" in folder_options else 0
+        default_index = folder_options.index("Clean (แนะนำ)") if "Clean (แนะนำ)" in folder_options else 0
 
         selected_folder_option = st.selectbox(
         "เลือกโฟลเดอร์ที่ต้องการตรวจสอบ:",
@@ -462,7 +550,7 @@ def render(proofreader, file_processor) -> None:
             key="normal_mode_folder_selection"
         )
         # บันทึกการเลือกโฟลเดอร์
-        if selected_folder_option != preferences_manager.get_setting("proofreading_settings", "normal_mode", {}).get("source_folder", "2-clean"):
+        if selected_folder_option != preferences_manager.get_setting("proofreading_settings", "normal_mode", {}).get("source_folder", "Clean"):
             preferences_manager.set_setting("proofreading_settings", "normal_mode", 
                 {**preferences_manager.get_setting("proofreading_settings", "normal_mode", {}), 
                 "source_folder": selected_folder_option})

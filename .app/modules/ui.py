@@ -307,6 +307,17 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     font-weight: 800;
 }}
 .ink-header p {{ margin: 0.25rem 0 0; color: #FFE0B2; font-size: 0.95rem; }}
+.ink-header-row {{
+    display: flex; align-items: center; gap: 1rem;
+}}
+.ink-header-text {{ flex: 1; min-width: 0; }}
+.ink-logo {{
+    width: 56px; height: 56px; flex-shrink: 0;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.95);
+    padding: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}}
 
 /* ============================================================
 * Section card
@@ -342,16 +353,64 @@ def apply_theme() -> None:
     st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
 
 
-def page_setup(page_title: str = APP_NAME, page_icon: str = "") -> None:
-    """ตั้งค่า page + theme ในการเรียกครั้งเดียว"""
+def _resolve_logo_path() -> Optional[str]:
+    """หาโลโก้ inkideaex.png — ลำดับ:
+      1. .app/inkideaex.png  (อยู่กับ source — กันโดนลบ)
+      2. <ROOT>/inkideaex.png  (legacy fallback)
+    """
+    try:
+        from . import paths
+        # Priority 1: ติดมากับ source code ใน .app/
+        app_logo = paths.APP_DIR / "inkideaex.png"
+        if app_logo.exists():
+            return str(app_logo)
+        # Priority 2: legacy ที่ root
+        root_logo = paths.ROOT / "inkideaex.png"
+        if root_logo.exists():
+            return str(root_logo)
+    except Exception:
+        pass
+    return None
+
+
+def page_setup(page_title: str = APP_NAME, page_icon: Optional[str] = None) -> None:
+    """ตั้งค่า page + theme ในการเรียกครั้งเดียว.
+
+    ถ้าไม่ระบุ page_icon จะลองโหลด `inkideaex.png` จาก root โปรเจกต์เป็น default
+    """
+    if page_icon is None:
+        page_icon = _resolve_logo_path() or ""
     st.set_page_config(page_title=page_title, page_icon=page_icon, layout="wide")
     apply_theme()
 
 
 def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
-    """หัวหน้าเพจสีส้ม"""
+    """หัวหน้าเพจสีส้ม — แสดงโลโก้ inkideaex.png ถ้ามี"""
+    logo_path = _resolve_logo_path()
+    if logo_path:
+        try:
+            import base64
+            with open(logo_path, 'rb') as f:
+                b64 = base64.b64encode(f.read()).decode('ascii')
+            logo_html = (
+                f'<img src="data:image/png;base64,{b64}" '
+                f'class="ink-logo" alt="logo" />'
+            )
+        except Exception:
+            logo_html = ''
+    else:
+        logo_html = ''
+
     st.markdown(
-        f"""<div class="ink-header"><h1> {title}</h1><p>{tagline}</p></div>""",
+        f"""<div class="ink-header">
+            <div class="ink-header-row">
+                {logo_html}
+                <div class="ink-header-text">
+                    <h1>{title}</h1>
+                    <p>{tagline}</p>
+                </div>
+            </div>
+        </div>""",
         unsafe_allow_html=True,
     )
 
@@ -515,26 +574,42 @@ MANUSCRIPT_CSS = """
 /* ===== List row buttons — compact ===== */
 [data-testid="stHorizontalBlock"] .stCheckbox { margin-top: 4px; }
 
-/* ===== Preview pane ===== */
+/* ===== Preview pane (VS-Code feel) =====
+ * ความสูง 560px เท่ากับฝั่ง file list — ขอบและมุมลงล็อกกัน
+ */
 .ms-preview-wrap {
     border: 1px solid var(--ink-border); border-top: 0;
     border-radius: 0 0 var(--ink-radius-lg) var(--ink-radius-lg);
     background: var(--ink-surface-2);
     padding: 0; overflow: hidden;
 }
+.ms-preview-wrap [data-testid="stCode"] {
+    border: none !important; background: transparent !important;
+}
 .ms-preview-wrap pre {
-    font-family: 'Consolas', 'Courier New', monospace !important;
-    font-size: 13.5px !important; line-height: 1.7 !important;
+    font-family: 'Consolas', 'JetBrains Mono', 'Courier New', monospace !important;
+    font-size: 13px !important; line-height: 1.55 !important;
     color: var(--ink-text) !important;
     background: transparent !important;
-    padding: 14px 18px !important; margin: 0 !important;
-    white-space: pre-wrap !important; word-wrap: break-word !important;
+    padding: 12px 16px !important; margin: 0 !important;
+    white-space: pre !important; word-wrap: normal !important;
+    tab-size: 4;
+}
+.ms-preview-wrap .react-syntax-highlighter-line-number {
+    color: var(--ink-text-faint) !important;
+    opacity: 0.55;
+    user-select: none;
+    border-right: 1px solid var(--ink-border);
+    margin-right: 0.5em !important;
+    padding-right: 0.75em !important;
 }
 .ms-preview-empty {
     background: var(--ink-surface-2);
     border: 1px dashed var(--ink-border); border-top: 0;
     border-radius: 0 0 var(--ink-radius-lg) var(--ink-radius-lg);
-    padding: 80px 20px; text-align: center;
+    height: 560px;
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
     color: var(--ink-text-faint);
     font-style: italic; font-size: 1.05em;
 }
