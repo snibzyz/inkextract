@@ -1,0 +1,12 @@
+# Ensure shell scripts always have LF line endings (or macOS will refuse to
+# run them with `bad interpreter: /usr/bin/env bash^M`). The CI builds the Mac
+# bundle directly from these files, so this matters in production.
+*.command  text eol=lf
+*.sh       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+
+# Windows .bat / .ps1: CRLF is fine and conventional
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.ps1      text eol=crlf

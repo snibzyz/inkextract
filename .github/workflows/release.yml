@@ -1,0 +1,146 @@
+name: Release builds
+
+# Triggers
+#   - Tag push: v*.*.*  -> builds and uploads release artifacts to that tag
+#   - workflow_dispatch -> manual trigger for testing
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to upload assets to a GitHub Release
+
+env:
+  # Portable Python distribution from python-build-standalone (astral-sh).
+  # Extracts to ./python/ with the layout we want (no installer needed).
+  PBS_RELEASE: "20241016"
+  PYTHON_VERSION: "3.12.7"
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+            artifact: INKEXTRACT-windows-x64.zip
+            pbs_arch: x86_64-pc-windows-msvc-install_only.tar.gz
+          - os: macos-13          # Intel
+            label: macos-x64
+            artifact: INKEXTRACT-macos-x64.zip
+            pbs_arch: x86_64-apple-darwin-install_only.tar.gz
+          - os: macos-latest      # Apple Silicon
+            label: macos-arm64
+            artifact: INKEXTRACT-macos-arm64.zip
+            pbs_arch: aarch64-apple-darwin-install_only.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- 1. Download portable Python ----------
+      - name: Download portable Python (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/cpython-${PYTHON_VERSION}+${PBS_RELEASE}-${{ matrix.pbs_arch }}"
+          curl -fL --retry 3 -o python.tar.gz "$URL"
+          mkdir -p bundle
+          tar -xzf python.tar.gz -C bundle
+          # The tarball extracts to bundle/python/
+          test -x bundle/python/bin/python3
+
+      - name: Download portable Python (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/astral-sh/python-build-standalone/releases/download/$env:PBS_RELEASE/cpython-$env:PYTHON_VERSION+$env:PBS_RELEASE-${{ matrix.pbs_arch }}"
+          Invoke-WebRequest -Uri $url -OutFile python.tar.gz
+          New-Item -ItemType Directory -Path bundle -Force | Out-Null
+          tar -xzf python.tar.gz -C bundle
+          # The tarball extracts to bundle/python/
+          if (-not (Test-Path "bundle/python/python.exe")) { throw "python.exe not found after extract" }
+
+      # ---------- 2. Install requirements into bundled Python ----------
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            PY="bundle/python/python.exe"
+          else
+            PY="bundle/python/bin/python3"
+          fi
+          "$PY" -m pip install --upgrade pip --disable-pip-version-check
+          "$PY" -m pip install -r .app/requirements.txt --disable-pip-version-check
+
+      # ---------- 3. Copy app code into bundle ----------
+      - name: Stage app code
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # copy .app directory (source code + VERSION)
+          cp -R .app bundle/.app
+          # ensure workspace structure exists at root (so user just sees folders ready to use)
+          mkdir -p bundle/workspace/0-input
+          mkdir -p bundle/workspace/1-fix
+          mkdir -p bundle/workspace/2-clean
+          mkdir -p bundle/workspace/3-merge
+          mkdir -p bundle/workspace/4-separate
+          mkdir -p bundle/workspace/output
+          mkdir -p bundle/workspace/vocab
+          mkdir -p bundle/.config
+
+      # ---------- 4. Add per-OS launcher ----------
+      - name: Add Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item build/win/Start.bat bundle/Start.bat
+          Copy-Item build/win/README-FIRST.txt bundle/README-FIRST.txt -ErrorAction SilentlyContinue
+
+      - name: Add macOS launcher
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cp build/mac/Start.command bundle/Start.command
+          chmod +x bundle/Start.command
+          cp build/mac/README-FIRST.txt bundle/README-FIRST.txt 2>/dev/null || true
+
+      # ---------- 5. Create archive ----------
+      - name: Rename bundle folder
+        shell: bash
+        run: mv bundle INKEXTRACT
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path INKEXTRACT -DestinationPath "${{ matrix.artifact }}" -Force
+
+      - name: Zip (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # ditto preserves macOS extended attributes / executable bits
+          ditto -c -k --sequesterRsrc --keepParent INKEXTRACT "${{ matrix.artifact }}"
+
+      # ---------- 6. Upload artifact (always) + release asset (on tag) ----------
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: ${{ matrix.artifact }}
+          retention-days: 14
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact }}
+          fail_on_unmatched_files: true

@@ -5,23 +5,30 @@
 
 ---
 
-## ⚡ ติดตั้งเร็ว
+## ⚡ ติดตั้งเร็ว — แค่กดรัน
+
+ไม่ต้องลง Python, ไม่ต้องลง pip, ไม่ต้องสร้าง venv — bundle มาให้พร้อมแล้ว
 
 ### 🪟 Windows
 
-1. ติดตั้ง Python → [python.org/downloads/windows](https://www.python.org/downloads/windows/) — **ติ๊ก `Add Python to PATH`** ❗
-2. ดาวน์โหลดโปรแกรม → [Releases ล่าสุด](https://github.com/snibzyz/inkextract/releases/latest) → `Source code (zip)` → แตกไฟล์
-3. ดับเบิลคลิก `ติดตั้ง.bat` (รอ 1-3 นาที)
-4. ดับเบิลคลิก `เริ่มโปรแกรม.bat` — เบราว์เซอร์เปิดอัตโนมัติ ✓
+1. ดาวน์โหลด → [Releases ล่าสุด](https://github.com/snibzyz/inkextract/releases/latest) → `INKEXTRACT-windows-x64.zip`
+2. คลิกขวา zip → **Extract All...** (อย่าใช้ "Open" เปิด zip เฉย ๆ)
+3. เข้าโฟลเดอร์ที่แตก → ดับเบิลคลิก `Start.bat`
+   - ถ้า SmartScreen เตือน → กด **More info** → **Run anyway** (เกิดกับ unsigned app ทั่วไป)
+4. เบราว์เซอร์เปิดอัตโนมัติ ✓
 
 ### 🍎 macOS
 
-1. ติดตั้ง Python → [python.org/downloads/macos](https://www.python.org/downloads/macos/) → กด `.pkg` ตัวบนสุด
-2. ดาวน์โหลดโปรแกรม → [Releases ล่าสุด](https://github.com/snibzyz/inkextract/releases/latest) → `Source code (zip)` → แตกไฟล์
-3. ดับเบิลคลิก `ติดตั้ง.command` — ถ้าขึ้นว่าเปิดไม่ได้ → คลิกขวา → Open → Open
-4. ดับเบิลคลิก `เริ่มโปรแกรม.command` — เบราว์เซอร์เปิดอัตโนมัติ ✓
+1. ดาวน์โหลด → [Releases ล่าสุด](https://github.com/snibzyz/inkextract/releases/latest)
+   - **Apple Silicon (M1/M2/M3/M4)** → `INKEXTRACT-macos-arm64.zip`
+   - **Intel Mac** → `INKEXTRACT-macos-x64.zip`
+2. ดับเบิลคลิก zip เพื่อแตกไฟล์ (Finder ทำให้อัตโนมัติ)
+3. เข้าโฟลเดอร์ → **คลิกขวาที่ `Start.command` → Open → Open** (ครั้งแรกเท่านั้น)
+4. เบราว์เซอร์เปิดอัตโนมัติ ✓
 
-> 🔄 **Auto-update**: โปรแกรมเช็คและดาวน์โหลดอัปเดตให้อัตโนมัติทุกครั้งที่เปิด — ไม่ต้องมี Git
+> 🔄 **Auto-update**: โปรแกรมเช็ค GitHub releases ทุกครั้งที่เปิด — ถ้ามีเวอร์ชันใหม่ → banner ขึ้นด้านบน → กด **Update now** → รีสตาร์ท Start = ใช้ตัวใหม่
+>
+> 🛠️ **อยากแก้โค้ดเอง?** → ดู [Developer setup](#-developer-setup-สำหรับคนที่อยากแก้โค้ด) ด้านล่าง
 
 ---
 
@@ -58,10 +65,34 @@ workspace/
 | ปัญหา | แก้ยังไง |
 |---|---|
 | เปิดโปรแกรมแล้วไม่มีอะไรขึ้น | รอ 10-20 วินาที เบราว์เซอร์จะเปิดเอง |
-| ติดตั้งแล้วเปิดไม่ได้ | ลบโฟลเดอร์ `.venv` แล้วรัน `ติดตั้ง.bat` ใหม่ |
-| Mac บอกว่าเปิดไม่ได้ | คลิกขวาที่ไฟล์ `.command` → Open → Open |
-| `python` ไม่เจอ | ติดตั้ง Python ใหม่ — ติ๊ก `Add Python to PATH` |
-| Auto-update ไม่ทำงาน | เช็คว่าเครื่องต่ออินเทอร์เน็ตอยู่ |
+| Win: SmartScreen เตือน | กด **More info** → **Run anyway** (เกิดกับ unsigned app ทั่วไป) |
+| Mac: บอกว่าเปิดไม่ได้ / damaged | คลิกขวาที่ `Start.command` → Open → Open (ครั้งแรกเท่านั้น) |
+| Auto-update ไม่ทำงาน | เช็คว่าเครื่องต่ออินเทอร์เน็ตอยู่ และไม่ถูก firewall บล็อก github.com |
+| อยากย้อนเวอร์ชัน | ดาวน์โหลด zip ของเวอร์ชันที่ต้องการจาก [Releases](https://github.com/snibzyz/inkextract/releases) → ทับโฟลเดอร์เดิม |
+
+---
+
+## 🛠️ Developer setup (สำหรับคนที่อยากแก้โค้ด)
+
+ถ้าจะ contribute หรือรันจาก source โดยตรง:
+
+### Windows
+```powershell
+git clone https://github.com/snibzyz/inkextract
+cd inkextract
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r .app\requirements.txt
+.venv\Scripts\python.exe -m streamlit run .app\app.py
+```
+
+### macOS / Linux
+```bash
+git clone https://github.com/snibzyz/inkextract
+cd inkextract
+python3 -m venv .venv
+.venv/bin/python -m pip install -r .app/requirements.txt
+.venv/bin/python -m streamlit run .app/app.py
+```
 
 ---
 
@@ -81,9 +112,10 @@ workspace/
 
 ## ข้อกำหนดระบบ
 
-- **Python 3.10+** ⚠ Windows ต้องติ๊ก "Add Python to PATH"
-- Windows 10/11 หรือ macOS 10.15+
-- อินเทอร์เน็ต (ตอนติดตั้งครั้งแรก และตรวจ update)
+- Windows 10/11 (x64) — bundle รวม Python มาแล้ว ไม่ต้องลงเอง
+- macOS 11+ (Apple Silicon หรือ Intel) — bundle รวม Python มาแล้ว ไม่ต้องลงเอง
+- อินเทอร์เน็ต (ตอนตรวจ update เท่านั้น — ใช้งานออฟไลน์ได้)
+- (Dev only) Python 3.10+ ถ้ารันจาก source
 
 ---
 

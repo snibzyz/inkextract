@@ -1,26 +1,42 @@
-# -*- coding: utf-8 -*-
-"""
-Auto-Updater for INKEXTRACT
-ทำงานโดยไม่ต้อง Git installed
-- ตรวจสอบ version ใหม่จาก GitHub releases API
-- ดาวน์โหลด ZIP ถ้ามีของใหม่
-- แตกไฟล์และ merge กับ folder เดิม
+"""Auto-Updater for INKEXTRACT.
+
+Two roles:
+
+1. **Library** (called from inside the running Streamlit app)
+   - check_for_update()      -> dict | None  (lightweight: just polls GitHub)
+   - download_and_stage()    -> dict         (heavy: downloads zip, extracts to .update_pending/staged)
+                                              Does NOT touch any in-use files.
+   These are the entry points the UI calls. Progress is reported via a
+   callback so the UI can render a progress bar.
+
+2. **Apply step** (CLI: `python -m .app.updater --apply-staged`)
+   Run by the launcher (Start.bat / Start.command) BEFORE the Streamlit
+   process starts. Moves files from .update_pending/staged into place,
+   bumps VERSION, deletes the staging folder.
+
+Layout while an update is pending:
+    <root>/
+        .update_pending/
+            <tag>.zip            (downloaded)
+            staged/              (extracted, with .git/.venv/workspace stripped)
+            READY                (touched once staging is complete)
 """
 
-import os
-import sys
-import json
+from __future__ import annotations
+
+import argparse
 import shutil
+import sys
 import zipfile
 from pathlib import Path
-from datetime import datetime
+from typing import Callable, Optional
 
 try:
     import requests
-    from packaging import version
+    from packaging import version as pkg_version
 except ImportError:
     requests = None
-    version = None
+    pkg_version = None
 
 
 # ============================================================
@@ -28,188 +44,255 @@ except ImportError:
 # ============================================================
 REPO_OWNER = "snibzyz"
 REPO_NAME = "inkextract"
-VERSION_FILE = ".app/VERSION"  # ไฟล์เก็บ version ปัจจุบัน
-ROOT_DIR = Path(__file__).parent.parent  # เพิ่มไป 1 level (.app/updater.py → root)
+ROOT_DIR: Path = Path(__file__).resolve().parent.parent
+VERSION_FILE = ROOT_DIR / ".app" / "VERSION"
+PENDING_DIR = ROOT_DIR / ".update_pending"
+STAGED_DIR = PENDING_DIR / "staged"
+READY_FLAG = PENDING_DIR / "READY"
 
-# URL ไปยัง GitHub releases API
 RELEASES_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
 
+# Folders we never overwrite during update merge
+SKIP_DIRS = {".git", ".venv", "workspace", ".config", "__pycache__", ".update_pending", "python"}
+
+ProgressCb = Callable[[float, str], None]  # (fraction 0..1, status text)
+
 
 # ============================================================
-# HELPER FUNCTIONS
+# Version helpers
 # ============================================================
-def read_version():
-    """อ่าน version ปัจจุบันจากไฟล์"""
-    version_file = ROOT_DIR / VERSION_FILE
-    if version_file.exists():
+def read_version() -> str:
+    if VERSION_FILE.exists():
         try:
-            return version_file.read_text(encoding="utf-8").strip()
-        except:
-            return "0.0.0"
+            return VERSION_FILE.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
     return "0.0.0"
 
 
-def write_version(v):
-    """บันทึก version ใหม่"""
-    version_file = ROOT_DIR / VERSION_FILE
-    version_file.parent.mkdir(parents=True, exist_ok=True)
-    version_file.write_text(v, encoding="utf-8")
+def write_version(v: str) -> None:
+    VERSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    VERSION_FILE.write_text(v.lstrip("v"), encoding="utf-8")
 
 
-def get_latest_release():
-    """ดึง release ล่าสุดจาก GitHub API"""
-    if not requests:
-        return None
-
+def _is_newer(remote_tag: str, local: str) -> bool:
+    if not pkg_version:
+        return False
     try:
-        resp = requests.get(RELEASES_API, timeout=5)
+        return pkg_version.parse(remote_tag) > pkg_version.parse(local)
+    except Exception:
+        return False
+
+
+# ============================================================
+# 1. Polling: check_for_update
+# ============================================================
+def check_for_update(timeout: float = 5.0) -> Optional[dict]:
+    """Poll GitHub releases. Returns None if up-to-date or offline.
+
+    On update available:
+        {
+            "current": "1.0.2",
+            "latest": "v1.0.3",
+            "url": "https://api.github.com/.../zipball/v1.0.3",
+            "body": "<release notes markdown>",
+            "html_url": "https://github.com/.../releases/tag/v1.0.3",
+        }
+    """
+    if not requests or not pkg_version:
+        return None
+    try:
+        resp = requests.get(RELEASES_API, timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
-        return {
-            "tag": data.get("tag_name", ""),
-            "url": data.get("zipball_url", ""),
-            "body": data.get("body", ""),
-        }
-    except Exception as e:
-        print(f"❌ ดึง release ไม่สำเร็จ: {e}")
+    except Exception:
         return None
 
-
-def download_file(url, dest_path):
-    """ดาวน์โหลดไฟล์"""
-    if not requests:
-        return False
-
-    try:
-        print(f"📥 ดาวน์โหลด: {url}")
-        resp = requests.get(url, timeout=30, stream=True)
-        resp.raise_for_status()
-
-        total_size = int(resp.headers.get("content-length", 0))
-        downloaded = 0
-
-        with open(dest_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total_size:
-                        pct = (downloaded / total_size) * 100
-                        print(f"  {pct:.1f}%", end="\r")
-
-        print(f"  100% ✓")
-        return True
-    except Exception as e:
-        print(f"❌ ดาวน์โหลดไม่สำเร็จ: {e}")
-        return False
-
-
-def extract_and_merge(zip_path, target_dir):
-    """
-    แตกไฟล์ ZIP และ merge กับ folder เดิม
-    - ไฟล์เก่าใน target_dir จะเก็บไว้ (ถ้า local change)
-    - ไฟล์ใหม่จะ overwrite
-    """
-    try:
-        print(f"📦 แตกไฟล์...")
-        temp_dir = target_dir.parent / f"_update_temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            zf.extractall(temp_dir)
-
-        # GitHub zipball โครงสร้าง: owner-repo-hash/...
-        # หา folder ใหม่ที่อยู่ข้างใน
-        extracted_folders = list(temp_dir.glob("*"))
-        if not extracted_folders:
-            print("❌ ไฟล์ ZIP ว่าง")
-            return False
-
-        src_dir = extracted_folders[0]  # owner-repo-hash/
-
-        # Copy ไฟล์ใหม่ไปยัง target (skip .git, .venv, workspace/)
-        skip_dirs = {".git", ".venv", "workspace", "__pycache__"}
-
-        def copy_tree(src, dst):
-            for item in src.iterdir():
-                if item.name in skip_dirs:
-                    continue
-                dst_item = dst / item.name
-                if item.is_dir():
-                    dst_item.mkdir(exist_ok=True)
-                    copy_tree(item, dst_item)
-                else:
-                    shutil.copy2(item, dst_item)
-
-        copy_tree(src_dir, target_dir)
-
-        # ทำความสะอาด temp folder
-        shutil.rmtree(temp_dir, ignore_errors=True)
-
-        print("✓ แตกไฟล์สำเร็จ")
-        return True
-    except Exception as e:
-        print(f"❌ แตกไฟล์ไม่สำเร็จ: {e}")
-        return False
-
-
-# ============================================================
-# MAIN AUTO-UPDATE LOGIC
-# ============================================================
-def auto_update():
-    """ตรวจสอบและ update ถ้ามีอัปเดตใหม่"""
-
-    # ข้ามถ้าไม่มี requests library
-    if not requests or not version:
-        return False
-
-    print("🔄 กำลังเช็คอัปเดต...")
-
+    tag = data.get("tag_name") or ""
     current = read_version()
-    latest_release = get_latest_release()
+    if not _is_newer(tag, current):
+        return None
 
-    if not latest_release:
-        print("⚠ ไม่สามารถเช็คอัปเดตได้ — ใช้ version เดิม")
-        return False
+    return {
+        "current": current,
+        "latest": tag,
+        "url": data.get("zipball_url") or "",
+        "body": data.get("body") or "",
+        "html_url": data.get("html_url") or "",
+    }
 
-    tag = latest_release["tag"]
 
-    # เปรียบเทียบ version
+# ============================================================
+# 2. Download + stage (called from UI in background)
+# ============================================================
+def download_and_stage(release: dict, on_progress: Optional[ProgressCb] = None) -> dict:
+    """Download the release zip and extract it into .update_pending/staged.
+
+    Does NOT overwrite any in-use file - that's done at next launch by
+    --apply-staged. So this is safe to call while Streamlit is running.
+
+    Returns:
+        {"ok": True, "tag": "<tag>"}
+        {"ok": False, "error": "<message>"}
+    """
+    if not requests:
+        return {"ok": False, "error": "requests not installed"}
+
+    cb = on_progress or (lambda f, msg: None)
+    url = release.get("url") or ""
+    tag = release.get("latest") or "unknown"
+
+    if not url:
+        return {"ok": False, "error": "no zipball url"}
+
     try:
-        if version.parse(tag) <= version.parse(current):
-            print(f"✓ โค้ดล่าสุดแล้ว (v{current})")
-            return False
-    except:
+        # Clean any previous pending state
+        if PENDING_DIR.exists():
+            shutil.rmtree(PENDING_DIR, ignore_errors=True)
+        PENDING_DIR.mkdir(parents=True, exist_ok=True)
+
+        zip_path = PENDING_DIR / f"{tag}.zip"
+
+        # ---- download ----
+        cb(0.0, "Connecting...")
+        with requests.get(url, timeout=30, stream=True) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length") or 0)
+            written = 0
+            with zip_path.open("wb") as f:
+                for chunk in resp.iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    written += len(chunk)
+                    if total:
+                        # downloads occupy 0..0.7 of the progress bar
+                        cb(0.70 * (written / total), f"Downloading {tag}...")
+                    else:
+                        cb(0.35, f"Downloading {tag}...")
+
+        # ---- extract ----
+        cb(0.72, "Extracting...")
+        extract_root = PENDING_DIR / "_extracted"
+        extract_root.mkdir(exist_ok=True)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_root)
+
+        # GitHub zipball wraps everything in <owner>-<repo>-<sha>/
+        children = [p for p in extract_root.iterdir() if p.is_dir()]
+        if not children:
+            return {"ok": False, "error": "zip is empty"}
+        src_root = children[0]
+
+        # ---- stage (copy into staged/, skipping volatile dirs) ----
+        cb(0.85, "Staging files...")
+        if STAGED_DIR.exists():
+            shutil.rmtree(STAGED_DIR, ignore_errors=True)
+        STAGED_DIR.mkdir(parents=True, exist_ok=True)
+
+        def copy_tree(src: Path, dst: Path) -> None:
+            for item in src.iterdir():
+                if item.name in SKIP_DIRS:
+                    continue
+                target = dst / item.name
+                if item.is_dir():
+                    target.mkdir(exist_ok=True)
+                    copy_tree(item, target)
+                else:
+                    shutil.copy2(item, target)
+
+        copy_tree(src_root, STAGED_DIR)
+
+        # cleanup intermediate
+        shutil.rmtree(extract_root, ignore_errors=True)
+        try:
+            zip_path.unlink()
+        except Exception:
+            pass
+
+        # mark READY - launcher uses this to decide whether to apply
+        READY_FLAG.write_text(tag, encoding="utf-8")
+
+        cb(1.0, f"Ready - restart to apply {tag}")
+        return {"ok": True, "tag": tag}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ============================================================
+# 3. Apply staged update (CLI, run by launcher BEFORE app starts)
+# ============================================================
+def apply_staged() -> int:
+    """Move files from .update_pending/staged into place. Returns process exit code."""
+    if not READY_FLAG.exists() or not STAGED_DIR.exists():
+        # nothing to do
+        return 0
+
+    tag = ""
+    try:
+        tag = READY_FLAG.read_text(encoding="utf-8").strip()
+    except Exception:
         pass
 
-    print(f"📦 พบอัปเดต: {current} → {tag}")
-    print(f"📝 {latest_release['body'][:200]}")
+    print(f"[updater] Applying staged update {tag}...")
 
-    # ดาวน์โหลด ZIP
-    zip_path = ROOT_DIR / f"_update_{tag}.zip"
-    if not download_file(latest_release["url"], zip_path):
-        return False
+    def merge(src: Path, dst: Path) -> None:
+        for item in src.iterdir():
+            target = dst / item.name
+            if item.is_dir():
+                target.mkdir(exist_ok=True)
+                merge(item, target)
+            else:
+                # overwrite existing files
+                try:
+                    if target.exists():
+                        target.unlink()
+                except Exception:
+                    pass
+                shutil.copy2(item, target)
 
-    # แตก + merge
-    if not extract_and_merge(zip_path, ROOT_DIR):
-        return False
-
-    # บันทึก version ใหม่
-    write_version(tag)
-
-    # ทำความสะอาด
     try:
-        zip_path.unlink()
-    except:
-        pass
+        merge(STAGED_DIR, ROOT_DIR)
+        if tag:
+            write_version(tag)
+        print(f"[updater] Update {tag} applied.")
+    except Exception as e:
+        print(f"[updater] Apply failed: {e}")
+        return 1
+    finally:
+        # always clean up the pending dir so we don't try again
+        shutil.rmtree(PENDING_DIR, ignore_errors=True)
 
-    print("✓ อัปเดตเสร็จ")
-    return True
+    return 0
+
+
+# ============================================================
+# CLI
+# ============================================================
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="updater")
+    p.add_argument("--apply-staged", action="store_true",
+                   help="Apply a previously-staged update. Used by launchers.")
+    p.add_argument("--check", action="store_true",
+                   help="Just check for an update and print the result.")
+    args = p.parse_args(argv)
+
+    if args.apply_staged:
+        return apply_staged()
+
+    if args.check:
+        info = check_for_update()
+        if info:
+            print(f"Update available: {info['current']} -> {info['latest']}")
+            return 0
+        print("Up to date.")
+        return 1
+
+    # default: print short status
+    print(f"INKEXTRACT version: {read_version()}")
+    return 0
 
 
 if __name__ == "__main__":
-    try:
-        success = auto_update()
-        sys.exit(0 if success else 1)
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        sys.exit(1)
+    sys.exit(main())

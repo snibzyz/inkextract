@@ -15,6 +15,7 @@ from modules.preferences_manager import preferences_manager
 from modules.format_checker import FormatChecker
 from modules import manuscript_checker
 from modules.tabs import manuscript as tab_manuscript_module
+from modules import update_banner
 
 # ตั้งค่าหน้าและ theme INKEXTRACT
 ui.page_setup(page_title=ui.APP_NAME, page_icon="🟠")
@@ -23,6 +24,7 @@ ui.page_setup(page_title=ui.APP_NAME, page_icon="🟠")
 
 def main():
     ui.header()
+    update_banner.render()
     
     # สร้าง instance ของ processors
     if 'proofreader' not in st.session_state:
