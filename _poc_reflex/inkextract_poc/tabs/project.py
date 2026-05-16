@@ -34,9 +34,9 @@ def active_project_card() -> rx.Component:
                     spacing="2", align="center", margin_top="6px",
                 ),
                 rx.hstack(
-                    stat_chip("ต้นฉบับ", AppState.active_project["input_count"], "amber"),
-                    stat_chip("แก้ไข", AppState.active_project["fix_count"], "gray"),
-                    stat_chip("สะอาด", AppState.active_project["clean_count"], "green"),
+                    stat_chip("ต้นฉบับ", AppState.active_input_count, "amber"),
+                    stat_chip("แก้ไข", AppState.active_fix_count, "gray"),
+                    stat_chip("สะอาด", AppState.active_clean_count, "green"),
                     stat_chip("ทำงานล่าสุด", AppState.active_meta, "gray"),
                     spacing="2", margin_top="14px", wrap="wrap",
                 ),
@@ -186,14 +186,12 @@ def delete_confirm_dialog() -> rx.Component:
     )
 
 
-def project_row(p: dict) -> rx.Component:
-    is_active = p["id"] == AppState.active_project_id
+def project_row(p) -> rx.Component:
+    """row in project list — p เป็น ProjectInfo (typed) → ใช้ attr access"""
+    is_active = p.id == AppState.active_project_id
     return rx.box(
         rx.hstack(
-            avatar_icon(
-                rx.cond(is_active, "folder-open", "folder").to_string(),
-                "amber" if False else "gray",
-            ) if False else rx.box(
+            rx.box(
                 rx.icon(
                     rx.cond(is_active, "folder-open", "folder"),
                     size=18,
@@ -213,15 +211,15 @@ def project_row(p: dict) -> rx.Component:
             ),
             rx.vstack(
                 rx.hstack(
-                    rx.text(p["name"], size="3", weight="bold", color=c(12)),
+                    rx.text(p.name, size="3", weight="bold", color=c(12)),
                     rx.cond(
-                        p["is_default"],
+                        p.is_default,
                         rx.badge("เริ่มต้น", color_scheme="amber",
                                  variant="soft", size="1"),
                         rx.fragment(),
                     ),
                     rx.cond(
-                        ~p["exists"],
+                        ~p.exists,
                         rx.badge("ไม่พบบนดิสก์", color_scheme="red",
                                  variant="soft", size="1"),
                         rx.fragment(),
@@ -236,7 +234,7 @@ def project_row(p: dict) -> rx.Component:
                 rx.hstack(
                     rx.icon("folder", size=10, color=c(9)),
                     rx.text(
-                        p["path"], size="1", color=c(10),
+                        p.path, size="1", color=c(10),
                         style={
                             "fontFamily":
                                 "'JetBrains Mono','Consolas',monospace",
@@ -248,11 +246,11 @@ def project_row(p: dict) -> rx.Component:
                     spacing="1", align="center",
                 ),
                 rx.hstack(
-                    stat_chip("ต้นฉบับ", p["input_count"], "amber"),
-                    stat_chip("ไฟล์รวม", p["file_count"], "gray"),
+                    stat_chip("ต้นฉบับ", p.input_count, "amber"),
+                    stat_chip("ไฟล์รวม", p.file_count, "gray"),
                     rx.cond(
-                        p["created_at"] != "",
-                        rx.text(f"· สร้างเมื่อ {p['created_at'][:10]}",
+                        p.created_short != "",
+                        rx.text("· สร้างเมื่อ " + p.created_short,
                                 size="1", color=c(10)),
                         rx.fragment(),
                     ),
@@ -270,16 +268,16 @@ def project_row(p: dict) -> rx.Component:
                     rx.button(
                         "สลับไป",
                         rx.icon("arrow-right", size=14),
-                        on_click=lambda: AppState.switch_project(p["id"]),
+                        on_click=AppState.switch_project(p.id),
                         variant="outline", color_scheme="amber", size="2",
-                        cursor="pointer", disabled=~p["exists"],
+                        cursor="pointer", disabled=~p.exists,
                     ),
                 ),
                 rx.cond(
-                    ~p["is_default"],
+                    ~p.is_default,
                     rx.icon_button(
                         rx.icon("trash-2", size=14),
-                        on_click=lambda: AppState.request_delete(p["id"]),
+                        on_click=AppState.request_delete(p.id),
                         variant="ghost", color_scheme="gray", size="2",
                         cursor="pointer",
                     ),

@@ -3,20 +3,24 @@ chcp 65001 >nul
 title INKEXTRACT POC (Reflex)
 cd /d "%~dp0"
 
+REM ─── Ports — match rxconfig.py ──────────────────────────────────────────
+set "FRONT_PORT=4500"
+set "BACK_PORT=4501"
+
 echo.
 echo ===========================================
 echo   INKEXTRACT POC - Reflex Dev Server
 echo ===========================================
-echo   Frontend: http://localhost:3500
-echo   Backend : http://localhost:3501
+echo   Frontend: http://localhost:%FRONT_PORT%
+echo   Backend : http://localhost:%BACK_PORT%
 echo.
 echo   Press Ctrl+C to stop
 echo ===========================================
 echo.
 
-REM ---- Auto-kill any process holding ports 3500 / 3501 -------------------
-call :killport 3500
-call :killport 3501
+REM ─── Auto-kill any process holding our ports ────────────────────────────
+call :killport %FRONT_PORT%
+call :killport %BACK_PORT%
 echo.
 
 set "PY=..\.venv\Scripts\python.exe"
@@ -27,7 +31,7 @@ if not exist "%PY%" (
     exit /b 1
 )
 
-"%PY%" -m reflex run --frontend-port 3500 --backend-port 3501
+"%PY%" -m reflex run --frontend-port %FRONT_PORT% --backend-port %BACK_PORT%
 
 pause
 exit /b 0
@@ -35,15 +39,17 @@ exit /b 0
 
 REM ============================================================
 REM  :killport PORT
-REM  - Finds processes LISTENING on PORT and kills them
+REM  - Find processes LISTENING / CONNECTED on PORT and kill them
+REM  - Works around orphan sockets (process dead but socket lingering)
+REM    by trying multiple PIDs from netstat
 REM ============================================================
 :killport
 set "P=%~1"
 set "FOUND="
-for /f "tokens=5" %%a in ('netstat -ano -p tcp ^| findstr /R /C:":%P% .*LISTENING"') do (
-    if not "%%a"=="0" (
-        echo [INFO] Port %P% in use by PID %%a - killing
-        taskkill /F /PID %%a >nul 2>&1
+for /f "tokens=5" %%a in ('netstat -ano -p tcp ^| findstr /R /C:":%P% .*LISTENING" /C:":%P% .*ESTABLISHED"') do (
+    if not "%%a"=="0" if not "%%a"=="4" (
+        echo [INFO] Port %P% held by PID %%a - killing
+        taskkill /F /PID %%a 2>nul
         set "FOUND=1"
     )
 )

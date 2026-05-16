@@ -60,10 +60,10 @@ _poc_reflex/
 
 ## Port
 
-- Frontend (vite dev): **3500**
-- Backend (granian WS): **3501**
+- Frontend (vite dev): **4500**
+- Backend (granian WS): **4501**
 
-ไม่ชนกับ Streamlit ที่ใช้ 8501
+หลีกเลี่ยง: Streamlit (8501), INK Electron Vite (5173-5573), Reflex defaults (3000/8000)
 
 ## ฟีเจอร์ที่ยังไม่ port (POC จงใจสั้น)
 

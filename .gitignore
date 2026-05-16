@@ -13,6 +13,12 @@ projects/
 # Playwright visual audit output — regenerated โดย _audit_ui.py ทุกครั้ง
 _screenshots/
 
+# Portable bundle (สร้างจาก GitHub Actions release workflow — ของหนัก ไม่ commit)
+bundle/
+python.tar.gz
+python-embed*.zip
+*.spec
+
 # ============================================================
 # Local environment / build artifacts
 # ============================================================

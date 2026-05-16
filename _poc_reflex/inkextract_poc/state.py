@@ -21,6 +21,30 @@ TABS = [
 ]
 
 
+# ── Typed models (rx.PropsBase) — required โดย Reflex 0.9+ สำหรับ rx.foreach ──────
+class ProjectInfo(rx.PropsBase):
+    id: str = ""
+    name: str = ""
+    path: str = ""
+    created_at: str = ""           # raw ISO "2026-05-10T01:32:11"
+    created_short: str = ""        # pre-formatted "2026-05-10"
+    is_default: bool = False
+    input_count: int = 0
+    fix_count: int = 0
+    clean_count: int = 0
+    raw_count: int = 0
+    file_count: int = 0
+    exists: bool = True
+
+
+class ManuscriptEntry(rx.PropsBase):
+    name: str = ""
+    size: int = 0
+    size_label: str = ""           # "1.2 KB"
+    is_small: bool = False
+    rel_size_pct: int = 100
+
+
 class AppState(rx.State):
     """Single global state — Reflex sync ระหว่าง backend ↔ React"""
 
@@ -28,11 +52,20 @@ class AppState(rx.State):
     current_tab: str = "project"
 
     # ── Project tab ─────────────────────────────────────────────────────────
-    projects_data: list[dict] = []
+    projects_data: list[ProjectInfo] = []
     active_project_id: str = ""
     show_create_form: bool = False
     new_project_name: str = ""
     confirm_delete_id: str = ""
+    # derived (plain str/int) — populated โดย _reload_projects() เพราะ
+    # Reflex 0.9 รองรับ attr access บน rx.PropsBase list ไม่ครบทุก op
+    active_name: str = ""
+    active_path: str = ""
+    active_meta: str = ""
+    active_default: bool = True
+    active_input_count: int = 0
+    active_fix_count: int = 0
+    active_clean_count: int = 0
 
     # ── Manuscript tab ──────────────────────────────────────────────────────
     ms_folder: str = ""
@@ -40,9 +73,9 @@ class AppState(rx.State):
     ms_scan_done: bool = False
     ms_total: int = 0
     ms_small: int = 0
-    ms_avg_size_bytes: int = 0
+    ms_avg_size_label: str = "—"
     ms_padding: int = 0
-    ms_entries: list[dict] = []
+    ms_entries: list[ManuscriptEntry] = []
     ms_selected: list[str] = []  # filenames selected for delete
 
     # ── Vocab tab ───────────────────────────────────────────────────────────
@@ -68,40 +101,8 @@ class AppState(rx.State):
     # COMPUTED VARS
     # ────────────────────────────────────────────────────────────────────────
     @rx.var
-    def active_project(self) -> dict:
-        for p in self.projects_data:
-            if p["id"] == self.active_project_id:
-                return p
-        return self.projects_data[0] if self.projects_data else {
-            "id": "", "name": "", "path": "", "created_at": "",
-            "is_default": True, "file_count": 0,
-        }
-
-    @rx.var
-    def active_name(self) -> str:
-        return self.active_project.get("name", "")
-
-    @rx.var
-    def active_path(self) -> str:
-        return self.active_project.get("path", "")
-
-    @rx.var
-    def active_meta(self) -> str:
-        p = self.active_project
-        if p.get("is_default"):
-            return "โปรเจกต์เริ่มต้น"
-        return f"สร้างเมื่อ {p.get('created_at', '')[:10]}"
-
-    @rx.var
     def project_count(self) -> int:
         return len(self.projects_data)
-
-    @rx.var
-    def kpi_summary(self) -> str:
-        ap = self.active_project
-        return (f"ต้นฉบับ {ap.get('input_count', 0)} · "
-                f"แก้ไข {ap.get('fix_count', 0)} · "
-                f"สะอาด {ap.get('clean_count', 0)}")
 
     # ────────────────────────────────────────────────────────────────────────
     # EVENT HANDLERS — Tab nav
@@ -134,25 +135,43 @@ class AppState(rx.State):
             print(f"[_reload_projects] {e}")
             return
 
-        out = []
+        out: list[ProjectInfo] = []
         for p in projects:
             root = p.root_path()
             stats = _count_subdir_files(root)
-            out.append({
-                "id": p.id,
-                "name": p.name,
-                "path": str(root),
-                "created_at": p.created_at or "",
-                "is_default": p.is_default,
-                "input_count": stats["input"],
-                "fix_count": stats["fix"],
-                "clean_count": stats["clean"],
-                "raw_count": stats["raw"],
-                "file_count": stats["input"] + stats["fix"] + stats["clean"],
-                "exists": root.exists(),
-            })
+            created = p.created_at or ""
+            out.append(ProjectInfo(
+                id=p.id,
+                name=p.name,
+                path=str(root),
+                created_at=created,
+                created_short=created[:10] if created else "",
+                is_default=p.is_default,
+                input_count=stats["input"],
+                fix_count=stats["fix"],
+                clean_count=stats["clean"],
+                raw_count=stats["raw"],
+                file_count=stats["input"] + stats["fix"] + stats["clean"],
+                exists=root.exists(),
+            ))
         self.projects_data = out
         self.active_project_id = active.id
+
+        # populate plain-str derived fields (Reflex Vars ไม่ทำ slice/index ดี ๆ)
+        for pi in out:
+            if pi.id == active.id:
+                self.active_name = pi.name
+                self.active_path = pi.path
+                self.active_default = pi.is_default
+                self.active_input_count = pi.input_count
+                self.active_fix_count = pi.fix_count
+                self.active_clean_count = pi.clean_count
+                self.active_meta = (
+                    "โปรเจกต์เริ่มต้น" if pi.is_default
+                    else (f"สร้างเมื่อ {pi.created_short}"
+                          if pi.created_short else "")
+                )
+                break
 
     @rx.event
     def switch_project(self, project_id: str):
@@ -168,8 +187,8 @@ class AppState(rx.State):
 
     def _name_of(self, project_id: str) -> str:
         for p in self.projects_data:
-            if p["id"] == project_id:
-                return p["name"]
+            if p.id == project_id:
+                return p.name
         return project_id
 
     @rx.event
@@ -204,10 +223,9 @@ class AppState(rx.State):
 
     @rx.event
     def open_active_folder(self):
-        ap = self.active_project
-        if not ap:
+        if not self.active_path:
             return
-        folder = Path(ap["path"])
+        folder = Path(self.active_path)
         if not folder.exists():
             yield rx.toast.error(f"ไม่พบโฟลเดอร์: {folder}",
                                  position="bottom-right")
@@ -285,20 +303,21 @@ class AppState(rx.State):
 
         self.ms_total = scan.total_files
         self.ms_small = scan.small_files_count
-        self.ms_avg_size_bytes = int(scan.average_size)
+        self.ms_avg_size_label = _fmt_size(int(scan.average_size))
         self.ms_padding = scan.detected_padding
         self.ms_scan_done = True
         self.ms_selected = []
 
-        entries = []
+        entries: list[ManuscriptEntry] = []
         for f in sorted(scan.files, key=lambda x: x.name):
-            entries.append({
-                "name": f.name,
-                "size": f.size,
-                "is_small": f.is_small,
-                "rel_size_pct": (round(f.size / scan.average_size * 100)
-                                 if scan.average_size else 0),
-            })
+            entries.append(ManuscriptEntry(
+                name=f.name,
+                size=f.size,
+                size_label=_fmt_size(f.size),
+                is_small=f.is_small,
+                rel_size_pct=(round(f.size / scan.average_size * 100)
+                              if scan.average_size else 0),
+            ))
         self.ms_entries = entries
         yield rx.toast.success(
             f"สแกนเสร็จ — พบ {scan.total_files} ไฟล์ · "
@@ -315,7 +334,7 @@ class AppState(rx.State):
 
     @rx.event
     def select_all_small(self):
-        self.ms_selected = [e["name"] for e in self.ms_entries if e["is_small"]]
+        self.ms_selected = [e.name for e in self.ms_entries if e.is_small]
 
     @rx.event
     def clear_ms_selection(self):
@@ -338,7 +357,10 @@ class AppState(rx.State):
     # EVENT HANDLERS — Proof tab
     # ────────────────────────────────────────────────────────────────────────
     @rx.event
-    def set_proof_mode(self, value: str):
+    def set_proof_mode(self, value):
+        # segmented_control passes str | list[str] — accept both
+        if isinstance(value, list):
+            value = value[0] if value else "normal"
         self.proof_mode = value
 
     @rx.event
@@ -410,6 +432,14 @@ class AppState(rx.State):
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────
+
+def _fmt_size(n: int) -> str:
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n/1024:.1f} KB"
+    return f"{n/1024/1024:.2f} MB"
+
 
 def _count_subdir_files(project_root: Path) -> dict:
     """Count .txt files in standard subdirs"""

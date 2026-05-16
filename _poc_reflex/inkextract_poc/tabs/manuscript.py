@@ -86,7 +86,7 @@ def stats_summary() -> rx.Component:
         ),
         section_card(
             rx.text("ขนาดเฉลี่ย", size="1", color=c(10)),
-            rx.heading(_fmt_size_var(AppState.ms_avg_size_bytes), size="7",
+            rx.heading(AppState.ms_avg_size_label, size="7",
                        color=c(12), margin_top="4px"),
             padding="1rem",
         ),
@@ -103,26 +103,14 @@ def stats_summary() -> rx.Component:
     )
 
 
-def _fmt_size_var(bytes_var) -> rx.Var:
-    """Format bytes → KB/MB string (Reflex var-friendly)"""
-    return rx.cond(
-        bytes_var < 1024,
-        bytes_var.to_string() + " B",
-        rx.cond(
-            bytes_var < 1024 * 1024,
-            (bytes_var / 1024).to_string() + " KB",
-            (bytes_var / 1024 / 1024).to_string() + " MB",
-        ),
-    )
-
-
-def file_row(entry: dict) -> rx.Component:
-    is_small = entry["is_small"]
-    is_selected = AppState.ms_selected.contains(entry["name"])
+def file_row(entry) -> rx.Component:
+    """entry = ManuscriptEntry (typed)"""
+    is_small = entry.is_small
+    is_selected = AppState.ms_selected.contains(entry.name)
     return rx.hstack(
         rx.checkbox(
             checked=is_selected,
-            on_change=lambda _: AppState.toggle_ms_select(entry["name"]),
+            on_change=AppState.toggle_ms_select(entry.name),
             color_scheme="amber",
         ),
         rx.icon(
@@ -130,15 +118,14 @@ def file_row(entry: dict) -> rx.Component:
             size=16,
             color=rx.cond(is_small, rx.color("red", 11), c(11)),
         ),
-        rx.text(entry["name"], size="2",
+        rx.text(entry.name, size="2",
                 color=rx.cond(is_small, rx.color("red", 11), c(12)),
                 weight=rx.cond(is_small, "bold", "medium"),
                 style={"fontFamily": "'JetBrains Mono','Consolas',monospace"}),
         rx.spacer(),
-        rx.text(entry["rel_size_pct"].to_string() + "%",
+        rx.text(entry.rel_size_pct.to_string() + "%",
                 size="1", color=c(10)),
-        stat_chip("ขนาด", _fmt_size_var(entry["size"]),
-                  "red" if False else "gray"),
+        stat_chip("ขนาด", entry.size_label, "gray"),
         padding="0.6rem 0.85rem",
         background=rx.cond(is_small, rx.color("red", 2), "white"),
         border=rx.cond(
