@@ -1,486 +1,201 @@
-"""tabs/files_sub/converter.py — Sub-tab 'converter' ของ tab จัดการไฟล์"""
+"""tabs/files_sub/converter.py — แปลงนามสกุลไฟล์ DOCX ↔ TXT ↔ MD
+
+UX แบบง่าย: เลือก "แปลงจาก" → "แปลงเป็น" → preview before/after → กดแปลง
+"""
 from __future__ import annotations
 import streamlit as st
-import pandas as pd
 from pathlib import Path
 
-from modules import paths, ui
-from modules.format_checker import FormatChecker
+from modules import paths
+from . import _helpers as h
+
+
+# ─── Mapping ของชนิดไฟล์ที่รองรับ ──────────────────────────────────────────
+_FORMATS = {
+    "DOCX": ".docx",
+    "TXT": ".txt",
+    "MD": ".md",
+}
+
+# คู่แปลงที่รองรับ — pair (from → to)
+_SUPPORTED_PAIRS = [
+    ("DOCX", "TXT"),
+    ("TXT", "DOCX"),
+    ("MD", "DOCX"),
+    ("TXT", "MD"),
+    ("MD", "TXT"),
+]
 
 
 def render(md_converter, docx_converter, file_processor) -> None:
-    """converter sub-tab"""
-    st.markdown("####  แปลงและเปลี่ยนนามสกุลไฟล์")
-
-    # เลือกโหมดการแปลง
-    conversion_mode = st.radio(
-    "เลือกโหมดการแปลง:",
-        options=[" DOCX → TXT", " TXT ↔ MD", " TXT/MD → DOCX"],
-        index=0,
-        help="DOCX → TXT: แปลง Word เป็น Text | TXT ↔ MD: เปลี่ยนนามสกุลใน-place ที่ 2-clean | TXT/MD → DOCX: แปลงเป็น Word",
-        horizontal=True
+    """แปลงไฟล์ tab — เปลี่ยนนามสกุลระหว่าง DOCX / TXT / MD"""
+    st.markdown(
+        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        'เปลี่ยนนามสกุลไฟล์ระหว่าง <code>DOCX</code> (Word), <code>TXT</code>, '
+        '<code>MD</code> (Markdown)'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
+    # ───────────── ขั้นที่ 1 ─────────────
+    h.step_header(1, "แปลงจาก (ไฟล์ต้นทาง)")
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        src_fmt = st.selectbox(
+            "นามสกุลต้นทาง",
+            options=list(_FORMATS.keys()),
+            index=0,
+            key="cv_src_fmt",
+        )
+    with col_b:
+        src_path, _ = h.folder_select(
+            "โฟลเดอร์ต้นทาง",
+            key="cv_src_dir",
+            presets=["Clean", "Input", "Fix", "Merge", "Separate"],
+            suggested="Clean",
+            help=f"โฟลเดอร์ที่มีไฟล์ .{_FORMATS[src_fmt].lstrip('.')} · ค่าเริ่มต้น = Clean",
+            show_count=False,
+        )
+
+    # นับจำนวนไฟล์ต้นทาง
+    src_ext = _FORMATS[src_fmt]
+    src_files = []
+    if src_path and src_path.exists():
+        src_files = sorted(src_path.rglob(f"*{src_ext}") if src_fmt == "DOCX"
+                          else src_path.glob(f"*{src_ext}"))
+    total_src = len(src_files)
+    if total_src > 0:
+        total_size = sum(f.stat().st_size for f in src_files) / (1024 * 1024)
+        st.caption(f"พบไฟล์ **{total_src:,}** ไฟล์ ({total_size:.1f} MB) ในโฟลเดอร์ `{src_path}`")
+    elif src_path:
+        st.warning(f"ไม่พบไฟล์ {src_ext} ในโฟลเดอร์นี้")
+
+    # ───────────── ขั้นที่ 2 ─────────────
+    h.step_header(2, "แปลงเป็น (ไฟล์ปลายทาง)")
+
+    # หา target options ที่รองรับจาก src_fmt
+    valid_targets = [t for s, t in _SUPPORTED_PAIRS if s == src_fmt]
+    if not valid_targets:
+        st.error(f"ยังไม่รองรับการแปลงจาก {src_fmt}")
+        return
+
+    col_c, col_d = st.columns([1, 2])
+    with col_c:
+        tgt_fmt = st.selectbox(
+            "นามสกุลปลายทาง",
+            options=valid_targets,
+            index=0,
+            key="cv_tgt_fmt",
+        )
+    with col_d:
+        tgt_path, _ = h.folder_select(
+            "โฟลเดอร์ปลายทาง",
+            key="cv_tgt_dir",
+            presets=["Clean", "Output", "Finish", "Fix"],
+            suggested="Clean",
+            help=f"โฟลเดอร์ที่จะเขียนไฟล์ .{_FORMATS[tgt_fmt].lstrip('.')}",
+            show_count=False,
+        )
+
+    # option: in-place (เฉพาะ TXT↔MD)
+    in_place = False
+    if (src_fmt, tgt_fmt) in [("TXT", "MD"), ("MD", "TXT")]:
+        in_place = st.checkbox(
+            "แปลงในที่เดิม (เปลี่ยนนามสกุลของไฟล์ต้นทาง โดยไม่สร้างไฟล์ใหม่)",
+            value=False,
+            help="ติ๊กถ้าต้องการเปลี่ยนนามสกุลของไฟล์เดิม (ไม่ copy)",
+            key="cv_in_place",
+        )
+
+    # option: preserve subfolder structure (เฉพาะ DOCX → TXT)
+    preserve_structure = True
+    if (src_fmt, tgt_fmt) == ("DOCX", "TXT"):
+        preserve_structure = st.checkbox(
+            "รักษาโครงสร้าง subfolder",
+            value=True,
+            help="ถ้าติ๊ก ผลลัพธ์จะคงโครงสร้างโฟลเดอร์ย่อย (เช่น novel1/chapter1.txt)",
+            key="cv_preserve",
+        )
+
+    # ───────────── PREVIEW ─────────────
     st.markdown("---")
+    if src_files:
+        tgt_ext = _FORMATS[tgt_fmt]
+        # สร้าง preview เปลี่ยนนามสกุล
+        before_after = []
+        for f in src_files[:6]:
+            rel = f.name
+            tgt_name = f.stem + tgt_ext
+            before_after.append(f"{rel}  →  {tgt_name}")
+        all_pairs = [f"{f.name}  →  {f.stem + tgt_ext}" for f in src_files]
+        h.filename_preview(
+            before_after,
+            total=len(src_files),
+            title=f"ตัวอย่างการแปลง ({src_fmt} → {tgt_fmt})",
+            all_filenames=all_pairs,
+        )
 
-    if conversion_mode == " DOCX → TXT":
-        # DOCX to TXT Mode
-        st.markdown("####  แปลงไฟล์ DOCX เป็น TXT")
-        st.info(" แปลงไฟล์ Word (.docx) เป็น Text (.txt) จากโฟลเดอร์ `Input` พร้อมรักษาโครงสร้าง subfolder")
+        # ตัวอย่างเนื้อหา (เฉพาะ TXT/MD → อ่านได้)
+        if src_fmt in ("TXT", "MD") and src_files:
+            try:
+                first_content = src_files[0].read_text(encoding='utf-8', errors='replace')
+                h.content_preview(first_content,
+                                  title=f"ตัวอย่างเนื้อหาไฟล์แรก: `{src_files[0].name}`")
+            except Exception:
+                pass
 
-        # สถิติไฟล์
-        docx_stats = docx_converter.get_file_stats()
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric(" ไฟล์ DOCX", docx_stats['docx_files'], help="ไฟล์ในโฟลเดอร์ 0-input (รวม subfolder)")
-
-        with col2:
-            st.metric(" ไฟล์ TXT", docx_stats['txt_files'], help="ไฟล์ในโฟลเดอร์ 0-input (รวม subfolder)")
-
-        with col3:
-            docx_size_mb = docx_stats['docx_size'] / (1024 * 1024)
-            st.metric(" ขนาด DOCX", f"{docx_size_mb:.1f} MB")
-
-        with col4:
-            st.metric(" โฟลเดอร์ย่อย", docx_stats['subfolders'])
-
-        st.markdown("---")
-
-        # การตั้งค่า
-        st.markdown("####  การตั้งค่า")
-
-        col_left, col_right = st.columns([1, 1])
-
-        with col_left:
-            st.markdown("** โฟลเดอร์ต้นทาง**")
-            st.info(" ต้นทาง: `Input`")
-            st.caption("ค้นหาไฟล์ .docx ทั้งหมด (รวม subfolder)")
-
-            # แสดงจำนวนไฟล์
-            if docx_stats['docx_files'] > 0:
-                st.success(f" พบ {docx_stats['docx_files']} ไฟล์ DOCX พร้อมแปลง")
-            else:
-                st.warning(" ไม่พบไฟล์ .docx ในโฟลเดอร์ 0-input")
-
-        with col_right:
-            st.markdown("** โฟลเดอร์ปลายทาง**")
-            st.info(" ปลายทาง: `output`")
-            st.caption("บันทึกเป็น .txt พร้อมรักษาโครงสร้าง subfolder")
-
-            # ตัวเลือกรักษาโครงสร้าง
-            preserve_structure = st.checkbox(
-            " รักษาโครงสร้าง subfolder",
-                value=True,
-                help="ถ้าเลือก: output/subfolder/file.txt | ถ้าไม่เลือก: output/file.txt"
-            )
-
-        # Preview Section
-        if docx_stats['docx_files'] > 0:
-            st.markdown("---")
-            st.markdown("####  ตัวอย่างไฟล์")
-
-            preview_data = docx_converter.preview_docx_files(docx_converter.input_dir, 3)
-            if 'error' not in preview_data and preview_data['files']:
-                st.info(f" **โฟลเดอร์**: `{preview_data['directory']}` ({preview_data['total_files']} ไฟล์)")
-
-                for file_info in preview_data['files'][:2]:
-                    if 'error' in file_info:
-                        st.error(f" {file_info['name']}: {file_info['error']}")
-                    else:
-                        folder_info = f" ( {file_info['folder']})" if file_info['folder'] != 'root' else ""
-                        with st.expander(f" {file_info['name']}{folder_info} ({file_info['total_paragraphs']} paragraphs)"):
-                            st.code(file_info['preview'], language="text")
-            else:
-                st.warning(" ไม่สามารถแสดงตัวอย่างได้")
-
-        st.markdown("---")
-
-        # ปุ่มแปลงไฟล์
-        col_btn1, col_btn2 = st.columns([1, 1])
-
-        with col_btn1:
-            if st.button(" **เริ่มแปลง DOCX → TXT**", type="primary", width='stretch', disabled=docx_stats['docx_files'] == 0):
-                with st.spinner("กำลังแปลงไฟล์ DOCX เป็น TXT..."):
-                    result = docx_converter.convert_docx_to_txt(
-                        preserve_structure=preserve_structure
-                    )
-
-                if result['success']:
-                    st.success(f" แปลงสำเร็จ! ประมวลผล {result['files_processed']} ไฟล์")
-
-                    # แสดงรายการไฟล์ที่แปลง
-                    if result['converted_files']:
-                        st.markdown("** ไฟล์ที่แปลงแล้ว:**")
-                        for file_info in result['converted_files'][:10]:
-                            st.write(f"`{file_info['source']}` → `{file_info['target']}` ({file_info['paragraphs']} paragraphs, {file_info['characters']} chars)")
-                        if len(result['converted_files']) > 10:
-                            st.write(f"... และอีก {len(result['converted_files']) - 10} ไฟล์")
-
-                    # แสดงข้อผิดพลาด (ถ้ามี)
-                    if result['errors']:
-                        st.warning(" มีปัญหาบางส่วน:")
-                        for error in result['errors'][:3]:
-                            st.write(f"{error}")
-                        if len(result['errors']) > 3:
-                            st.write(f"... และอีก {len(result['errors']) - 3} รายการ")
-
-                    st.toast(f"แปลง {result['files_processed']} ไฟล์สำเร็จ!")
+    # ───────────── Action ─────────────
+    st.markdown("---")
+    can_convert = bool(src_path and tgt_path and total_src > 0)
+    if st.button(f" **เริ่มแปลง {src_fmt} → {tgt_fmt}**", type="primary", width='stretch',
+                 disabled=not can_convert, key="cv_btn_run"):
+        with st.spinner(f"กำลังแปลง {total_src} ไฟล์..."):
+            result = _do_convert(src_fmt, tgt_fmt, src_path, tgt_path,
+                                 preserve_structure=preserve_structure,
+                                 in_place=in_place,
+                                 docx_converter=docx_converter,
+                                 md_converter=md_converter)
+        if result and result.get('success'):
+            n = result.get('files_processed', 0)
+            st.success(f"แปลงสำเร็จ {n:,} ไฟล์")
+            for f in result.get('converted_files', [])[:10]:
+                if isinstance(f, dict):
+                    st.write(f"`{f.get('source', '')}` → `{f.get('target', '')}`")
                 else:
-                    st.error(f" {result['error']}")
-
-        with col_btn2:
-            if st.button(" **รีเฟรชสถิติ**", width='stretch'):
-                st.rerun()
-
-        # คำแนะนำการใช้งาน
-        st.markdown("---")
-        st.markdown("####  คำแนะนำการใช้งาน")
-
-        col_help1, col_help2 = st.columns([1, 1])
-
-        with col_help1:
-            st.markdown("""
-            ** การใช้งาน:**
-            - วางไฟล์ .docx ในโฟลเดอร์ `Input`
-            - รองรับ subfolder (เช่น 0-input/novel1/chapter1.docx)
-            - แปลงเป็น text ธรรมดา (เหมือน copy-paste)
-            - รักษาโครงสร้างโฟลเดอร์เดิม
-            """)
-
-        with col_help2:
-            st.markdown("""
-            ** ตัวเลือก:**
-            - **รักษาโครงสร้าง**: บันทึก output ตามโครงสร้างเดิม
-            - **ไม่รักษาโครงสร้าง**: บันทึกทุกไฟล์ที่ root ของ output
-            - แปลงทีละหลายไฟล์พร้อมกัน
-            """)
-
-        # ข้อมูลเพิ่มเติม
-        st.markdown("---")
-        with st.expander(" ข้อมูลเพิ่มเติม"):
-            st.markdown("""
-            ** วัตถุประสงค์:**
-            - แปลงไฟล์ Word เป็น Text ธรรมดา
-            - เหมาะสำหรับการประมวลผลข้อความต่อ
-            - รักษาโครงสร้าง subfolder
-
-            ** โครงสร้างโฟลเดอร์:**
-            ```
-            0-input/
-            ├── file1.docx → output/file1.txt
-            └── subfolder/
-                └── file2.docx → output/subfolder/file2.txt
-            ```
-
-            ** ฟีเจอร์:**
-            - แยก paragraph อัตโนมัติ
-            - รองรับ subfolder ไม่จำกัดระดับ
-            - แสดง progress bar
-            - สถิติไฟล์แบบ real-time
-            """)
-
-    elif conversion_mode == " TXT/MD → DOCX":
-        # TXT/MD to DOCX Mode
-        st.markdown("####  แปลงไฟล์ TXT/MD เป็น DOCX")
-        st.info("แปลงไฟล์ .txt หรือ .md จากโฟลเดอร์ `Clean` เป็น Word (.docx) — บันทึก in-place ใน `Clean` เดิม")
-
-        # สถิติไฟล์
-        txt_md_stats = docx_converter.get_txt_md_stats()
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.metric(" ไฟล์ TXT", txt_md_stats['txt_files'], help="ไฟล์ในโฟลเดอร์ 2-clean")
-
-        with col2:
-            st.metric(" ไฟล์ MD", txt_md_stats['md_files'], help="ไฟล์ในโฟลเดอร์ 2-clean")
-
-        with col3:
-            total_size_mb = txt_md_stats['total_size'] / (1024 * 1024)
-            st.metric(" ขนาดรวม", f"{total_size_mb:.1f} MB")
-
-        st.markdown("---")
-
-        # การตั้งค่า
-        st.markdown("####  การตั้งค่า")
-
-        col_left, col_right = st.columns([1, 1])
-
-        with col_left:
-            st.markdown("** โฟลเดอร์ต้นทาง**")
-            st.info(" ต้นทาง: `Clean`")
-            st.caption("ค้นหาไฟล์ .txt และ .md ทั้งหมด")
-
-            # แสดงจำนวนไฟล์
-            if txt_md_stats['total_files'] > 0:
-                st.success(f" พบ {txt_md_stats['total_files']} ไฟล์พร้อมแปลง ({txt_md_stats['txt_files']} TXT + {txt_md_stats['md_files']} MD)")
-            else:
-                st.warning(" ไม่พบไฟล์ .txt หรือ .md ในโฟลเดอร์ 2-clean")
-
-        with col_right:
-            st.markdown("**โฟลเดอร์ปลายทาง**")
-            st.info("ปลายทาง: `Clean` (in-place)")
-            st.caption("บันทึก .docx ลงในโฟลเดอร์เดียวกับ source")
-
-        st.markdown("---")
-
-        # ปุ่มแปลงไฟล์
-        col_btn1, col_btn2 = st.columns([1, 1])
-
-        with col_btn1:
-            if st.button(" **เริ่มแปลง TXT/MD → DOCX**", type="primary", width='stretch', disabled=txt_md_stats['total_files'] == 0):
-                with st.spinner("กำลังแปลงไฟล์ TXT/MD เป็น DOCX..."):
-                    result = docx_converter.convert_txt_to_docx()
-
-                if result['success']:
-                    st.success(f" แปลงสำเร็จ! ประมวลผล {result['files_processed']} ไฟล์")
-
-                    # แสดงรายการไฟล์ที่แปลง
-                    if result['converted_files']:
-                        st.markdown("** ไฟล์ที่แปลงแล้ว:**")
-                        for file_info in result['converted_files'][:10]:
-                            st.write(f"`{file_info['source']}` → `{file_info['target']}` ({file_info['lines']} บรรทัด, {file_info['characters']} ตัวอักษร)")
-                        if len(result['converted_files']) > 10:
-                            st.write(f"... และอีก {len(result['converted_files']) - 10} ไฟล์")
-
-                    # แสดงข้อผิดพลาด (ถ้ามี)
-                    if result['errors']:
-                        st.warning(" มีปัญหาบางส่วน:")
-                        for error in result['errors'][:3]:
-                            st.write(f"{error}")
-                        if len(result['errors']) > 3:
-                            st.write(f"... และอีก {len(result['errors']) - 3} รายการ")
-
-                    st.toast(f"แปลง {result['files_processed']} ไฟล์สำเร็จ!")
-                else:
-                    st.error(f" {result['error']}")
-
-        with col_btn2:
-            if st.button(" **รีเฟรชสถิติ**", width='stretch'):
-                st.rerun()
-
-        # คำแนะนำการใช้งาน
-        st.markdown("---")
-        st.markdown("####  คำแนะนำการใช้งาน")
-
-        col_help1, col_help2 = st.columns([1, 1])
-
-        with col_help1:
-            st.markdown("""
-            **การใช้งาน:**
-            - แปลงไฟล์ .txt หรือ .md จากโฟลเดอร์ `Clean`
-            - บันทึกเป็น .docx ในโฟลเดอร์ `Clean` เดียวกัน (in-place)
-            - รองรับทั้งไฟล์ TXT และ MD
-            - แปลงทีละหลายไฟล์พร้อมกัน
-            """)
-
-        with col_help2:
-            st.markdown("""
-            ** ฟีเจอร์:**
-            - แปลงแต่ละบรรทัดเป็น paragraph แยกกัน
-            - รักษาบรรทัดว่าง
-            - แสดง progress bar
-            - สถิติไฟล์แบบ real-time
-            """)
-
-        # ข้อมูลเพิ่มเติม
-        st.markdown("---")
-        with st.expander(" ข้อมูลเพิ่มเติม"):
-            st.markdown("""
-            ** วัตถุประสงค์:**
-            - แปลงไฟล์ Text/Markdown เป็น Word document
-            - เหมาะสำหรับการส่งหรือเปิดด้วย Microsoft Word
-            - รักษาโครงสร้างบรรทัดเดิม
-
-            **โครงสร้างโฟลเดอร์:**
-            ```
-            2-clean/
-            ├── file1.txt → 2-clean/file1.docx (in-place)
-            └── file2.md → 2-clean/file2.docx (in-place)
-            ```
-
-            ** ฟีเจอร์:**
-            - รองรับทั้ง .txt และ .md
-            - แปลงแต่ละบรรทัดเป็น paragraph
-            - รักษาบรรทัดว่าง
-            - แสดง progress bar
-            - สถิติไฟล์แบบ real-time
-            """)
-
-    else:
-        # TXT ↔ MD Mode (existing code)
-        st.markdown("####  เปลี่ยนนามสกุลไฟล์ TXT ↔ MD")
-        st.info(" เปลี่ยนนามสกุลไฟล์ระหว่าง .txt และ .md ใน-place ที่โฟลเดอร์ `Clean` (แปลงไฟล์โดยตรง ไม่คัดลอก)")
-
-        # สถิติไฟล์
-        stats = md_converter.get_file_stats()
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric(" ไฟล์ TXT", stats['clean_files'], help="ไฟล์ในโฟลเดอร์ 2-clean")
-
-        with col2:
-            st.metric(" ไฟล์ MD", stats['md_files'], help="ไฟล์ .md ในโฟลเดอร์ 2-clean")
-
-        with col3:
-            clean_size_mb = stats['clean_size'] / (1024 * 1024)
-            st.metric(" ขนาด TXT", f"{clean_size_mb:.1f} MB")
-
-        with col4:
-            md_size_mb = stats['md_size'] / (1024 * 1024)
-            st.metric(" ขนาด MD", f"{md_size_mb:.1f} MB")
-
-        st.markdown("---")
-
-        # การตั้งค่า
-        st.markdown("####  การตั้งค่า")
-
-        col_left, col_right = st.columns([1, 1])
-
-        with col_left:
-            st.markdown("** ประเภทไฟล์ที่ต้องการแปลง**")
-            source_folder = st.selectbox(
-            "เลือกประเภทไฟล์:",
-                options=["Clean (TXT)", "Clean (MD)"],
-                index=0,
-                help="เลือกไฟล์ในโฟลเดอร์ 2-clean ที่ต้องการแปลง (แปลงใน-place)"
-            )
-
-            if source_folder == "Clean (TXT)":
-                source_path = md_converter.clean_dir
-                target_path = md_converter.clean_dir  # in-place conversion
-                conversion_type = "TXT → MD"
-                button_text = " **เปลี่ยนเป็น .md**"
-                button_color = "primary"
-            else:
-                source_path = md_converter.clean_dir  # in-place conversion - ทั้งหมดอยู่ใน 2-clean
-                target_path = md_converter.clean_dir
-                conversion_type = "MD → TXT"
-                button_text = " **เปลี่ยนกลับเป็น .txt**"
-                button_color = "secondary"
-
-        with col_right:
-            st.markdown("** การแปลง**")
-            if source_folder == "Clean (TXT)":
-                st.info(" แปลงใน-place ที่ `Clean`")
-                st.caption("เปลี่ยนนามสกุล .txt → .md โดยตรงในโฟลเดอร์เดิม")
-            else:
-                st.info(" แปลงใน-place ที่ `Clean`")
-                st.caption("เปลี่ยนนามสกุล .md → .txt โดยตรงในโฟลเดอร์เดิม")
-
-            # แสดงจำนวนไฟล์ในโฟลเดอร์ต้นทาง
-            if source_path.exists():
-                files_count = len(list(source_path.glob("*.txt" if source_folder == "Clean (TXT)" else "*.md")))
-                if files_count > 0:
-                    st.success(f" พบ {files_count} ไฟล์พร้อมแปลง")
-                else:
-                    st.warning(f" ไม่พบไฟล์ในโฟลเดอร์ {source_path}")
-            else:
-                st.error(f" โฟลเดอร์ {source_path} ไม่มีอยู่")
-
-        # Preview Section
-        if source_path.exists():
-            st.markdown("---")
-            st.markdown("####  ตัวอย่างไฟล์")
-
-            # กำหนด extension ที่ต้องการดู
-            file_ext = "txt" if source_folder == "Clean (TXT)" else "md"
-            preview_data = md_converter.preview_conversion(source_path, 5, file_ext)
-            if 'error' not in preview_data and preview_data['files']:
-                st.info(f" **โฟลเดอร์**: `{preview_data['directory']}` ({preview_data['total_files']} ไฟล์)")
-
-                for file_info in preview_data['files'][:2]:  # แสดงแค่ 2 ไฟล์แรก
-                    with st.expander(f" {file_info['name']} ({file_info['size']} bytes)"):
-                        st.code(file_info['preview'], language="markdown" if file_info['type'] in ["MD", "Markdown"] else "text")
-            else:
-                st.warning(" ไม่สามารถแสดงตัวอย่างได้")
-
-        st.markdown("---")
-
-        # ปุ่มแปลงไฟล์
-        col_btn1, col_btn2 = st.columns([1, 1])
-
-        with col_btn1:
-            if st.button(button_text, type=button_color, width='stretch'):
-                if source_folder == "Clean (TXT)":
-                    # เปลี่ยนนามสกุล TXT เป็น MD (in-place)
-                    with st.spinner("กำลังเปลี่ยนนามสกุล TXT เป็น MD ใน-place..."):
-                        result = md_converter.convert_txt_to_md(in_place=True)
-                else:
-                    # เปลี่ยนนามสกุล MD เป็น TXT (in-place)
-                    with st.spinner("กำลังเปลี่ยนนามสกุล MD เป็น TXT ใน-place..."):
-                        result = md_converter.convert_md_to_txt(in_place=True)
-
-                if result['success']:
-                    st.success(f" เปลี่ยนนามสกุลสำเร็จ! ประมวลผล {result['files_processed']} ไฟล์")
-
-                    # แสดงรายการไฟล์ที่แปลง
-                    if result['converted_files']:
-                        st.markdown("** ไฟล์ที่แปลงแล้ว:**")
-                        for filename in result['converted_files'][:10]:  # แสดงแค่ 10 ไฟล์แรก
-                            st.write(f"`{filename}`")
-                        if len(result['converted_files']) > 10:
-                            st.write(f"... และอีก {len(result['converted_files']) - 10} ไฟล์")
-
-                    # แสดงข้อผิดพลาด (ถ้ามี)
-                    if result['errors']:
-                        st.warning(" มีปัญหาบางส่วน:")
-                        for error in result['errors'][:3]:
-                            st.write(f"{error}")
-                        if len(result['errors']) > 3:
-                            st.write(f"... และอีก {len(result['errors']) - 3} รายการ")
-
-                    st.toast(f"เปลี่ยนนามสกุล {result['files_processed']} ไฟล์สำเร็จ!")
-                else:
-                    st.error(f" {result['error']}")
-
-        with col_btn2:
-            if st.button(" **รีเฟรชสถิติ**", width='stretch'):
-                st.rerun()
-
-        # คำแนะนำการใช้งาน
-        st.markdown("---")
-        st.markdown("####  คำแนะนำการใช้งาน")
-
-        col_help1, col_help2 = st.columns([1, 1])
-
-        with col_help1:
-            st.markdown("""
-            ** TXT → MD:**
-            - เปลี่ยนนามสกุลไฟล์จาก .txt เป็น .md
-            - แปลงใน-place ที่โฟลเดอร์ `Clean`
-            - แก้ปัญหาบรรทัดติดกันในไฟล์
-            - เหมาะสำหรับการอ่านบนหน้าจอ
-            """)
-
-        with col_help2:
-            st.markdown("""
-            ** MD → TXT:**
-            - เปลี่ยนนามสกุลไฟล์จาก .md กลับเป็น .txt
-            - แปลงใน-place ที่โฟลเดอร์ `Clean`
-            - แก้ปัญหาบรรทัดติดกันในไฟล์
-            - เหมาะสำหรับการประมวลผลต่อ
-            """)
-
-        # ข้อมูลเพิ่มเติม
-        st.markdown("---")
-        with st.expander(" ข้อมูลเพิ่มเติม"):
-            st.markdown("""
-            ** วัตถุประสงค์:**
-            - แก้ปัญหาการอ่านไฟล์ .txt ที่ล้นจอ
-            - เปลี่ยนนามสกุลไฟล์เพื่อให้อ่านง่ายขึ้น
-            - แก้ปัญหาบรรทัดติดกันในไฟล์
-
-            ** โฟลเดอร์ที่เกี่ยวข้อง:**
-            - `2-clean/` - ไฟล์ที่แปลง (เปลี่ยนนามสกุลโดยตรงในโฟลเดอร์นี้)
-
-            ** ฟีเจอร์:**
-            - แปลงใน-place (เปลี่ยนไฟล์โดยตรง ไม่คัดลอก)
-            - เปลี่ยนนามสกุลแบบ batch (หลายไฟล์พร้อมกัน)
-            - แก้ปัญหาบรรทัดติดกันอัตโนมัติ
-            - แสดงตัวอย่างก่อนเปลี่ยน
-            - สถิติไฟล์แบบ real-time
-            """)
-
-        # Format Check Sub-tab
-
+                    st.write(f"`{f}`")
+            if result.get('errors'):
+                st.warning(f"มี {len(result['errors'])} ไฟล์ที่ผิดพลาด")
+                for err in result['errors'][:3]:
+                    st.write(f"- {err}")
+            st.toast(f"แปลง {n} ไฟล์สำเร็จ")
+        elif result:
+            st.error(f"แปลงไม่สำเร็จ: {result.get('error', 'unknown error')}")
+        else:
+            st.error("แปลงไม่สำเร็จ")
+
+
+def _do_convert(src_fmt: str, tgt_fmt: str, src_path: Path, tgt_path: Path,
+                *, preserve_structure: bool, in_place: bool,
+                docx_converter, md_converter) -> dict:
+    """เรียก converter ที่เหมาะกับคู่แปลง"""
+    pair = (src_fmt, tgt_fmt)
+    if pair == ("DOCX", "TXT"):
+        # patch source/target dirs ให้ docx_converter
+        docx_converter.input_dir = src_path
+        docx_converter.output_dir = tgt_path
+        return docx_converter.convert_docx_to_txt(
+            source_dir=src_path, target_dir=tgt_path,
+            preserve_structure=preserve_structure,
+        )
+    elif pair in [("TXT", "DOCX"), ("MD", "DOCX")]:
+        docx_converter.clean_dir = src_path
+        return docx_converter.convert_txt_to_docx(source_dir=src_path, target_dir=tgt_path)
+    elif pair == ("TXT", "MD"):
+        md_converter.clean_dir = src_path
+        return md_converter.convert_txt_to_md(source_dir=src_path, target_dir=tgt_path,
+                                               in_place=in_place)
+    elif pair == ("MD", "TXT"):
+        md_converter.clean_dir = src_path
+        return md_converter.convert_md_to_txt(source_dir=src_path, target_dir=tgt_path,
+                                               in_place=in_place)
+    return {'success': False, 'error': f'ไม่รองรับการแปลง {src_fmt} → {tgt_fmt}'}

@@ -27,7 +27,7 @@ class NovelProofreader:
             'english': 0,
             'numbers': 0
         }
-        
+
         # Multi-folder mode data
         self.multi_folder_results: Dict[str, Dict[str, Any]] = {}
         self.multi_folder_settings: Dict[str, bool] = {
@@ -35,11 +35,10 @@ class NovelProofreader:
             'check_english': app_config.default_check_english,
             'check_numbers': app_config.default_check_numbers
         }
-        
-        # Use configuration
-        self.input_dir = app_config.input_dir
-        self.output_dir = app_config.output_dir
-        self.normal_mode_source = app_config.clean_dir
+
+        # Override สำหรับ normal_mode_source (UI ตั้ง path เองได้)
+        # ปล่อย None = ใช้ paths.CLEAN_DIR ของ project ปัจจุบัน
+        self._normal_mode_source_override: Optional[Path] = None
         
         # Settings
         self.normal_mode_settings: Dict[str, bool] = {
@@ -63,7 +62,26 @@ class NovelProofreader:
         self.file_analyzer = FileAnalyzer()
         self.error_exporter = ErrorExporter()
         self.validator = SecurityValidator()
-    
+
+    # ── Dynamic path properties — resolve ต่อ project ปัจจุบันทุกครั้ง ──
+    # อย่า snapshot เป็น attribute ตรงๆ เพราะตอนสลับ project ค่าจะค้าง
+    # ทำให้ output ไปลง workspace เดิม (bug ที่ user เจอ)
+    @property
+    def input_dir(self) -> Path:
+        return paths.INPUT_DIR
+
+    @property
+    def output_dir(self) -> Path:
+        return paths.OUTPUT_DIR
+
+    @property
+    def normal_mode_source(self) -> Path:
+        return self._normal_mode_source_override or paths.CLEAN_DIR
+
+    @normal_mode_source.setter
+    def normal_mode_source(self, value) -> None:
+        self._normal_mode_source_override = Path(value) if value else None
+
     def classify_text(self, text: str, skip_ab_markers: bool = True) -> Dict[str, bool]:
         """จำแนกประเภทของอักขระที่ต้องการตรวจในข้อความ"""
         if skip_ab_markers and (text.startswith('[A]') or text.startswith('[B]')):
@@ -1112,12 +1130,15 @@ class NovelProofreader:
             st.warning("⚠️ ไม่มีข้อมูลโหมดทั่วไปให้ส่งออก")
             return
 
+        # ใช้ paths.OUTPUT_DIR แบบ dynamic — กันเคสที่ singleton snapshot ค่าผิด
+        # (เช่นตอนสลับ project แล้ว self.output_dir ค้าง workspace เดิม)
+        output_dir = paths.OUTPUT_DIR
         try:
             with st.spinner("กำลังสร้างไฟล์ normal_mode_errors.txt..."):
-                self.output_dir.mkdir(exist_ok=True)
+                output_dir.mkdir(parents=True, exist_ok=True)
 
                 # ลบ part files เก่าก่อน (กัน mix old+new)
-                for old in self.output_dir.glob("normal_mode_errors_*.txt"):
+                for old in output_dir.glob("normal_mode_errors_*.txt"):
                     try:
                         old.unlink()
                     except Exception:
@@ -1143,7 +1164,7 @@ class NovelProofreader:
                     ]
 
                 master_header = _build_header()
-                master_path = self.output_dir / "normal_mode_errors.txt"
+                master_path = output_dir / "normal_mode_errors.txt"
                 with open(master_path, 'w', encoding='utf-8') as f:
                     f.write("\n".join(master_header))
                     f.write("\n".join(body_lines))
@@ -1166,7 +1187,7 @@ class NovelProofreader:
                     if total_parts > 1:
                         for idx, chunk in enumerate(chunks):
                             part_name = f"normal_mode_errors_{idx + 1:03d}.txt"
-                            part_path = self.output_dir / part_name
+                            part_path = output_dir / part_name
                             part_label = f" — ส่วนที่ {idx + 1}/{total_parts}"
                             with open(part_path, 'w', encoding='utf-8') as f:
                                 f.write("\n".join(_build_header(part_label)))
@@ -1292,9 +1313,9 @@ class NovelProofreader:
         part_files: List[Path] = _collect_from(paths.IMPORT_FIX_DIR)
         source_dir: Optional[Path] = paths.IMPORT_FIX_DIR if part_files else None
         if not part_files:
-            part_files = _collect_from(self.output_dir)
+            part_files = _collect_from(paths.OUTPUT_DIR)
             if part_files:
-                source_dir = self.output_dir
+                source_dir = paths.OUTPUT_DIR
 
         if not part_files:
             st.error(
@@ -1673,16 +1694,19 @@ class NovelProofreader:
             st.warning("⚠️ ไม่มีข้อผิดพลาดให้ส่งออก")
             return
 
+        # ใช้ paths.* dynamic — กันเคสที่ snapshot ค่าผิดตอนสลับ project
+        output_dir = paths.OUTPUT_DIR
+        input_dir = paths.INPUT_DIR
         try:
             from modules.error_chunker import (
                 split_blocks_by_line_count, build_part_filename,
             )
 
             with st.spinner("กำลังสร้างไฟล์ error_trans.txt..."):
-                self.output_dir.mkdir(exist_ok=True)
+                output_dir.mkdir(parents=True, exist_ok=True)
 
                 # ลบ part files เก่าก่อน (กัน mix old+new)
-                for old in self.output_dir.glob("error_trans_*.txt"):
+                for old in output_dir.glob("error_trans_*.txt"):
                     try:
                         old.unlink()
                     except Exception:
@@ -1696,7 +1720,7 @@ class NovelProofreader:
                     "# แก้ไขเฉพาะบรรทัด [B] เท่านั้น (ไฟล์ master รวมทุกรายการ)\n"
                     "# รูปแบบ: line_number| แล้วตามด้วย [A] และ [B]\n\n"
                 )
-                master_path = self.output_dir / "error_trans.txt"
+                master_path = output_dir / "error_trans.txt"
                 with open(master_path, 'w', encoding='utf-8') as f:
                     f.write(master_header)
                     for block in blocks:
@@ -1724,7 +1748,7 @@ class NovelProofreader:
                     if total_parts > 1:
                         for part_index, chunk_blocks in enumerate(chunks):
                             part_filename = build_part_filename("error_trans.txt", part_index, total_parts)
-                            part_path = self.output_dir / part_filename
+                            part_path = output_dir / part_filename
                             with open(part_path, 'w', encoding='utf-8') as f:
                                 f.write(
                                     f"# แก้ไขเฉพาะบรรทัด [B] เท่านั้น "
@@ -1740,7 +1764,7 @@ class NovelProofreader:
 
                 # หลังจากส่งออก error_trans แล้ว ทำการ export คำศัพท์จากไฟล์ input
                 all_vocab = []
-                txt_files = list(self.input_dir.glob("*.txt"))
+                txt_files = list(input_dir.glob("*.txt"))
                 for file_path in txt_files:
                     try:
                         with open(file_path, 'r', encoding='utf-8') as f:
@@ -1765,7 +1789,7 @@ class NovelProofreader:
                         continue
 
                 if all_vocab:
-                    vocab_file = self.output_dir / "vocab.txt"
+                    vocab_file = output_dir / "vocab.txt"
                     with open(vocab_file, 'w', encoding='utf-8') as vf:
                         for vocab in all_vocab:
                             vf.write(vocab + "\n")
@@ -1817,9 +1841,9 @@ class NovelProofreader:
 
         # 2. Fallback: output/
         if not part_files:
-            part_files = _collect_from(self.output_dir)
+            part_files = _collect_from(paths.OUTPUT_DIR)
             if part_files:
-                source_dir = self.output_dir
+                source_dir = paths.OUTPUT_DIR
 
         if not part_files:
             st.error(

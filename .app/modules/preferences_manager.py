@@ -55,37 +55,34 @@ class PreferencesManager:
             },
             "file_processing": {
                 "merge_settings": {
-                    "input_folder_mode": "ใช้โฟลเดอร์แนะนำ",
-                    "input_folder_recommended": "Clean (แนะนำ)",
-                    "output_folder_mode": "ใช้โฟลเดอร์แนะนำ",
-                    "chapters_per_file": 5,
-                    "focus_keyword": "###",
+                    "chapters_per_file": 0,
+                    "focus_keyword": "",
                     "title_prefix": "Chapter ",
                     "title_suffix": "",
-                    "chapter_padding": 3,
+                    "chapter_padding": 4,
                     "start_number": 1,
-                    "end_credit": "จบตอน",
-                    "add_chapter_heading": True,
+                    "end_credit": "",
+                    "add_chapter_heading": False,
                     "add_filename_separator": False
                 },
                 "separate_settings": {
-                    "focus_keyword": "###",
+                    "focus_keyword": "",
                     "title_prefix": "Chapter ",
                     "title_suffix": "",
-                    "chapter_padding": 3,
+                    "chapter_padding": 4,
                     "start_number": 1,
-                    "strip_end_credit": True,
-                    "end_credit_text": "จบตอน"
+                    "strip_end_credit": False,
+                    "end_credit_text": ""
                 },
                 "generate_settings": {
                     "file_prefix": "Chapter ",
                     "file_suffix": "",
-                    "number_padding": 3,
+                    "number_padding": 4,
                     "start_number": 1,
                     "batch_size": 10,
-                    "add_chapter_title": True,
+                    "add_chapter_title": False,
                     "use_filename_as_title": True,
-                    "chapter_title_template": "ระบบเซียนหมื่นพรสวรรค์ ตอนที่ "
+                    "chapter_title_template": ""
                 }
             },
             "converter_settings": {

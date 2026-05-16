@@ -16,9 +16,10 @@ def test_paths_exist():
 
 
 def test_paths_relative_layout():
-    assert paths.INPUT_DIR == paths.WORKSPACE_DIR / "0-input"
-    assert paths.OUTPUT_DIR == paths.WORKSPACE_DIR / "output"
-    assert paths.VOCAB_DIR == paths.WORKSPACE_DIR / "vocab"
+    # PascalCase ตาม schema ใหม่ (migrate จาก 0-input/output/vocab แล้ว)
+    assert paths.INPUT_DIR == paths.WORKSPACE_DIR / "Input"
+    assert paths.OUTPUT_DIR == paths.WORKSPACE_DIR / "Output"
+    assert paths.VOCAB_DIR == paths.WORKSPACE_DIR / "Vocab"
 
 
 def test_app_config_defaults():
@@ -39,9 +40,11 @@ def test_ensure_dirs_creates_workspace():
 
 
 def test_every_data_dir_has_gitkeep_for_clone_users():
-    """กัน regression — ทุก folder ใน ALL_DATA_DIRS ต้องมี .gitkeep
-    ไม่งั้น user ที่ clone จาก git แล้วเปิดโปรแกรมก่อนอะไรจะ trigger
-    ensure_dirs() จะเห็นโฟลเดอร์ไม่ครบ."""
+    """กัน regression — ทุก folder ใน default workspace ต้องมี .gitkeep
+    (สำหรับ user ที่ clone จาก git) — user-created projects ใน projects/
+    ไม่ต้องมี เพราะสร้างโดย user เอง ไม่อยู่ใน repo"""
+    # บังคับ active = default workspace ก่อนเช็ค (อาจ active project อื่นจาก state เดิม)
+    paths.set_active_project_root(None)
     missing = [d for d in paths.ALL_DATA_DIRS if not (d / ".gitkeep").exists()]
     assert not missing, (
         f"missing .gitkeep in {len(missing)} folder(s): "

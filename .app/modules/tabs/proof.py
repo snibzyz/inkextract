@@ -9,6 +9,132 @@ from modules import paths, ui
 from modules.preferences_manager import preferences_manager
 
 
+# ── Stepper component — ใช้ร่วมทั้ง AB และ Normal mode ──
+# Step ที่ "active" = step ปัจจุบันที่ user อยู่ (highlight สด)
+# Step ที่ "done"   = ผ่านไปแล้ว (เช็คเขียว)
+# Step ที่ "todo"   = ยังไม่ถึง (เทา)
+_STEP_LABELS = ["ตั้งค่า", "วิเคราะห์", "ส่งออก", "นำเข้า", "แก้ไขไฟล์"]
+
+
+def _render_stepper(active_idx: int, done_until: int = -1) -> None:
+    """แสดง stepper 1-2-3-4-5 แบบ horizontal — visual cue ให้ user รู้ว่าอยู่ step ไหน.
+
+    Args:
+        active_idx: index ของ step ปัจจุบัน (0-based) — highlight ส้ม
+        done_until: index ของ step สุดท้ายที่ทำเสร็จแล้ว (0-based, -1 = ยังไม่เริ่ม)
+    """
+    pieces = []
+    for i, label in enumerate(_STEP_LABELS):
+        n = i + 1
+        if i <= done_until:
+            # ผ่านไปแล้ว — เขียว
+            bg = "var(--ink-success, #16a34a)"
+            color = "white"
+            border = "var(--ink-success, #16a34a)"
+            num_html = "&check;"
+        elif i == active_idx:
+            # อยู่ step นี้ — ส้ม brand
+            bg = "var(--ink-orange, #f97316)"
+            color = "white"
+            border = "var(--ink-orange, #f97316)"
+            num_html = str(n)
+        else:
+            # ยังไม่ถึง — เทา
+            bg = "transparent"
+            color = "var(--ink-text-muted, #888)"
+            border = "var(--ink-border, #ddd)"
+            num_html = str(n)
+
+        circle = (
+            f"<div style='width:28px;height:28px;border-radius:50%;background:{bg};"
+            f"color:{color};border:2px solid {border};display:inline-flex;"
+            f"align-items:center;justify-content:center;font-weight:600;font-size:13px;'>"
+            f"{num_html}</div>"
+        )
+        text = (
+            f"<span style='margin-left:0.4rem;color:{color if i == active_idx or i <= done_until else 'var(--ink-text-muted, #888)'};"
+            f"font-size:13px;font-weight:{'600' if i == active_idx else '400'};'>"
+            f"{label}</span>"
+        )
+        pieces.append(
+            f"<div style='display:inline-flex;align-items:center;'>{circle}{text}</div>"
+        )
+        if i < len(_STEP_LABELS) - 1:
+            # connector
+            connector_color = (
+                "var(--ink-success, #16a34a)" if i < done_until
+                else "var(--ink-border, #ddd)"
+            )
+            pieces.append(
+                f"<div style='flex:1;height:2px;background:{connector_color};"
+                f"margin:0 0.6rem;min-width:20px;'></div>"
+            )
+
+    html = (
+        "<div style='display:flex;align-items:center;padding:0.75rem 1rem;"
+        "background:var(--ink-surface-2, #f8f8f8);border-radius:var(--ink-radius-md, 8px);"
+        "margin-bottom:1rem;'>"
+        + "".join(pieces)
+        + "</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def _ab_step_state(proofreader, export_files_exist: bool) -> tuple[int, int]:
+    """คำนวณ stepper state สำหรับ AB mode → (active_idx, done_until)."""
+    has_errors = bool(proofreader.found_errors)
+    has_corrections = any(
+        e.get('corrected_content') for e in (proofreader.found_errors or [])
+    )
+    if has_corrections:
+        return (4, 3)   # อยู่ step 5 (แก้ไขไฟล์)
+    if export_files_exist:
+        return (3, 2)   # อยู่ step 4 (นำเข้า)
+    if has_errors:
+        return (2, 1)   # อยู่ step 3 (ส่งออก)
+    if proofreader.normal_mode_stats.get('files', 0) > 0 or has_errors:
+        return (1, 0)
+    return (1, 0)       # default: อยู่ step 2 (วิเคราะห์)
+
+
+def _normal_step_state(proofreader, export_files_exist: bool) -> tuple[int, int]:
+    """คำนวณ stepper state สำหรับ Normal mode."""
+    errors = proofreader.normal_mode_errors or []
+    has_errors = bool(errors)
+    has_corrections = any(e.get('corrected_content') for e in errors)
+    if has_corrections:
+        return (4, 3)
+    if export_files_exist:
+        return (3, 2)
+    if has_errors:
+        return (2, 1)
+    if proofreader.normal_mode_stats.get('files', 0) > 0:
+        return (1, 0)
+    return (1, 0)
+
+
+def _ab_export_exists() -> bool:
+    """เช็คว่ามีไฟล์ export ใน Import/ หรือ Output/ ของ project ปัจจุบัน"""
+    for d in (paths.IMPORT_FIX_DIR, paths.OUTPUT_DIR):
+        if d.exists():
+            if (d / "import_errors.txt").exists() or (d / "error_trans.txt").exists():
+                return True
+            if any(d.glob("error_trans_*.txt")):
+                return True
+    return False
+
+
+def _normal_export_exists() -> bool:
+    """เช็คว่ามีไฟล์ normal_mode export อยู่"""
+    for d in (paths.IMPORT_FIX_DIR, paths.OUTPUT_DIR):
+        if d.exists():
+            if (d / "normal_mode_import.txt").exists() or (d / "normal_mode_errors.txt").exists():
+                return True
+            if any(d.glob("normal_mode_errors_*.txt")):
+                return True
+    return False
+
+
 def render(proofreader, file_processor) -> None:
     """แสดง proof tab ทั้งหมด — มี 3 sub-tabs"""
     tab_ab_mode, tab_normal_mode, tab_multi_folder = st.tabs([
@@ -18,46 +144,9 @@ def render(proofreader, file_processor) -> None:
     ])
 
     with tab_ab_mode:
-        # Workflow steps — ใช้ theme-aware bg + Thai-only
-        st.markdown(
-        """
-            <div style="background: var(--ink-surface-tint); padding: 1.25rem;
-                        border-radius: var(--ink-radius-lg);
-                        border-left: 4px solid var(--ink-orange);
-                        margin-bottom: 1.25rem; color: var(--ink-text);">
-                <div style="font-weight: 700; color: var(--ink-orange-dark);
-                            font-size: 1.05em; margin-bottom: 0.75rem;">
-                    ขั้นตอนการทำงาน
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
-                    <span style="background: var(--ink-orange); color: white;
-                                 padding: 4px 12px; border-radius: var(--ink-radius-pill);
-                                 font-size: 0.88em; font-weight: 600;">1. วิเคราะห์</span>
-                    <span style="color: var(--ink-text-muted);">→</span>
-                    <span style="background: var(--ink-orange); color: white;
-                                 padding: 4px 12px; border-radius: var(--ink-radius-pill);
-                                 font-size: 0.88em; font-weight: 600;">2. ส่งออก</span>
-                    <span style="color: var(--ink-text-muted);">→</span>
-                    <span style="background: var(--ink-orange); color: white;
-                                 padding: 4px 12px; border-radius: var(--ink-radius-pill);
-                                 font-size: 0.88em; font-weight: 600;">3. แก้ไขนอก</span>
-                    <span style="color: var(--ink-text-muted);">→</span>
-                    <span style="background: var(--ink-orange); color: white;
-                                 padding: 4px 12px; border-radius: var(--ink-radius-pill);
-                                 font-size: 0.88em; font-weight: 600;">4. นำเข้า</span>
-                    <span style="color: var(--ink-text-muted);">→</span>
-                    <span style="background: var(--ink-orange); color: white;
-                                 padding: 4px 12px; border-radius: var(--ink-radius-pill);
-                                 font-size: 0.88em; font-weight: 600;">5. แก้ไฟล์</span>
-                    <span style="color: var(--ink-text-muted);">→</span>
-                    <span style="background: var(--ink-orange); color: white;
-                                 padding: 4px 12px; border-radius: var(--ink-radius-pill);
-                                 font-size: 0.88em; font-weight: 600;">6. ทำสะอาด</span>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        # Dynamic stepper — บอก step ปัจจุบันตาม state จริง
+        ab_active, ab_done = _ab_step_state(proofreader, _ab_export_exists())
+        _render_stepper(ab_active, ab_done)
 
         # Settings Section
         with st.container():
@@ -105,7 +194,8 @@ def render(proofreader, file_processor) -> None:
         check_duplicate_content = st.checkbox(
         " ตรวจเนื้อหาซ้ำระหว่างไฟล์",
             value=ab_mode_prefs.get("check_duplicate_content", True),
-            help="ถ้าไฟล์ในโฟลเดอร์ `0-input` มีเนื้อหา [B] เหมือนกันหลายไฟล์จะแจ้งเตือนใน UI"
+            help="ถ้าไฟล์ในโฟลเดอร์ `0-input` มีเนื้อหา [B] เหมือนกันหลายไฟล์จะแจ้งเตือนใน UI",
+            key="ab_check_duplicate_content",
         )
         if check_duplicate_content != ab_mode_prefs.get("check_duplicate_content", True):
             preferences_manager.set_setting(
@@ -266,13 +356,14 @@ def render(proofreader, file_processor) -> None:
             "แก้ไข exclude.txt (อักขระที่ต้องการยกเว้น):",
                 value=current_content,
                 height=200,
-                help="ตัวอย่าง: 【, 】, , , HP, MP"
+                help="ตัวอย่าง: 【, 】, , , HP, MP",
+                key="ab_exclude_textarea",
             )
 
             col_btn1, col_btn2, col_btn3 = st.columns(3)
 
             with col_btn1:
-                if st.button(" **บันทึกไฟล์**", width='stretch'):
+                if st.button(" **บันทึกไฟล์**", width='stretch', key="ab_exclude_save"):
                     try:
                         exclude_file.write_text(new_patterns, encoding='utf-8')
                         st.success(" บันทึก exclude.txt สำเร็จ!")
@@ -281,7 +372,7 @@ def render(proofreader, file_processor) -> None:
                         st.error(f" เกิดข้อผิดพลาด: {str(e)}")
 
             with col_btn2:
-                if st.button("โหลดรูปแบบใหม่", width='stretch'):
+                if st.button("โหลดรูปแบบใหม่", width='stretch', key="ab_exclude_reload"):
                     try:
                         regex_patterns.reload_patterns()
                         st.success(f"โหลดรูปแบบใหม่สำเร็จ — ตอนนี้มี {len(regex_patterns.ignore_patterns)} รูปแบบ")
@@ -290,7 +381,7 @@ def render(proofreader, file_processor) -> None:
                         st.error(f" เกิดข้อผิดพลาด: {str(e)}")
 
             with col_btn3:
-                if st.button(" **คู่มือการใช้**", width='stretch'):
+                if st.button(" **คู่มือการใช้**", width='stretch', key="ab_exclude_guide"):
                     guide_file = Path("EXCLUDE_GUIDE.md")
                     if guide_file.exists():
                         st.info(" เปิดไฟล์ `EXCLUDE_GUIDE.md` เพื่อดูคู่มือการใช้งานแบบเต็ม")
@@ -311,12 +402,47 @@ def render(proofreader, file_processor) -> None:
             else:
                 st.info(" ไม่สามารถแสดง patterns ได้")
 
+        # ── Settings panel (chunk_lines / fuzzy_threshold) — แสดงค้างไว้เสมอ
+        saved_chunk_lines = int(ab_mode_prefs.get("chunk_lines", 500) or 500)
+        saved_fuzzy_ratio = float(ab_mode_prefs.get("import_fuzzy_min_ratio", 0.95) or 0.95)
+
+        with st.expander("ตั้งค่าส่งออก / นำเข้า", expanded=True):
+            col_setting1, col_setting2 = st.columns(2)
+            with col_setting1:
+                chunk_lines = st.number_input(
+                    "แบ่ง chunk โดยจำนวนบรรทัด (~ ต่อไฟล์) — 0 = ไม่ split",
+                    min_value=0, max_value=5000, step=50, value=saved_chunk_lines,
+                    help="เขียน master `error_trans.txt` เสมอ + ถ้าตั้ง > 0 จะแบ่งเป็น "
+                         "`error_trans_001.txt`, `_002.txt`, ... โดยห้ามตัดกลาง entry และ "
+                         "repeat headers ในทุก chunk · ค่า ~500 บรรทัด/file พอดี token AI",
+                    key="ab_export_chunk_lines",
+                )
+                if int(chunk_lines) != saved_chunk_lines:
+                    preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                        {**ab_mode_prefs, "chunk_lines": int(chunk_lines)})
+                    ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
+
+            with col_setting2:
+                fuzzy_threshold = st.slider(
+                    "Fuzzy threshold (import)",
+                    min_value=0.85, max_value=1.00, step=0.01,
+                    value=saved_fuzzy_ratio,
+                    help="ความเข้มข้นของ fuzzy match ตอน import กลับ — สูง = แม่น (ลด false match), "
+                         "ต่ำ = ทนต่อ AI แก้ [A] เปลี่ยนเล็กน้อย · 1.00 = exact match only · "
+                         "default 0.95 (แม่นๆ)",
+                    key="ab_import_fuzzy_threshold",
+                )
+                if abs(fuzzy_threshold - saved_fuzzy_ratio) > 1e-6:
+                    preferences_manager.set_setting("proofreading_settings", "ab_mode",
+                        {**ab_mode_prefs, "import_fuzzy_min_ratio": float(fuzzy_threshold)})
+                    ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
+
         # Main Action Buttons
         st.markdown("####  การดำเนินการหลัก")
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            if st.button(" **เริ่มวิเคราะห์**", type="primary", width='stretch'):
+            if st.button(" **เริ่มวิเคราะห์**", type="primary", width='stretch', key="ab_btn_analyze"):
                 with st.spinner("กำลังวิเคราะห์ไฟล์..."):
                     analyze_files_signature = inspect.signature(proofreader.analyze_files)
                     analyze_files_kwargs = {
@@ -351,65 +477,13 @@ def render(proofreader, file_processor) -> None:
 
         with col2:
             export_disabled = len(proofreader.found_errors) == 0
-
-            # ใช้ session state สำหรับการยืนยัน export
-            if 'export_confirm' not in st.session_state:
-                st.session_state.export_confirm = False
-
-            saved_chunk_lines = int(ab_mode_prefs.get("chunk_lines", 500) or 500)
-            saved_fuzzy_ratio = float(ab_mode_prefs.get("import_fuzzy_min_ratio", 0.95) or 0.95)
-
-            if not st.session_state.export_confirm:
-                if st.button("**ส่งออกเพื่อแก้ไข**", disabled=export_disabled, width='stretch'):
-                    st.session_state.export_confirm = True
-                    st.rerun()
-            else:
-                st.warning("ต้องการส่งออกไฟล์ error_trans.txt หรือไม่?")
-
-                # ตัวเลือกแบ่งไฟล์ — กัน token limit ของ AI (split โดยจำนวนบรรทัด)
-                chunk_lines = st.number_input(
-                    "แบ่ง chunk โดยจำนวนบรรทัด (~ ต่อไฟล์) — 0 = ไม่ split",
-                    min_value=0, max_value=5000, step=50, value=saved_chunk_lines,
-                    help="เขียน master `error_trans.txt` เสมอ + ถ้าตั้ง > 0 จะแบ่งเป็น "
-                         "`error_trans_001.txt`, `_002.txt`, ... โดยห้ามตัดกลาง entry และ "
-                         "repeat headers ในทุก chunk · ค่า ~500 บรรทัด/file พอดี token AI",
-                    key="export_chunk_lines",
-                )
-                if int(chunk_lines) != saved_chunk_lines:
-                    preferences_manager.set_setting("proofreading_settings", "ab_mode",
-                        {**ab_mode_prefs, "chunk_lines": int(chunk_lines)})
-                    ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
-
-                col_yes, col_no = st.columns(2)
-                with col_yes:
-                    if st.button("ยืนยัน", type="primary", width='stretch'):
-                        with st.spinner("กำลังส่งออก..."):
-                            proofreader.export_errors(chunk_lines=int(chunk_lines))
-                        st.session_state.export_confirm = False
-                        st.toast("ส่งออกสำเร็จ!")
-                        st.rerun()
-                with col_no:
-                    if st.button("ยกเลิก", width='stretch'):
-                        st.session_state.export_confirm = False
-                        st.rerun()
+            if st.button("**ส่งออกเพื่อแก้ไข**", disabled=export_disabled, width='stretch', key="ab_btn_export"):
+                with st.spinner("กำลังส่งออก..."):
+                    proofreader.export_errors(chunk_lines=int(chunk_lines))
+                st.toast("ส่งออกสำเร็จ!")
 
         with col3:
-            # Fuzzy threshold slider — default แม่นๆ
-            fuzzy_threshold = st.slider(
-                "Fuzzy threshold (import)",
-                min_value=0.85, max_value=1.00, step=0.01,
-                value=saved_fuzzy_ratio,
-                help="ความเข้มข้นของ fuzzy match ตอน import กลับ — สูง = แม่น (ลด false match), "
-                     "ต่ำ = ทนต่อ AI แก้ [A] เปลี่ยนเล็กน้อย · 1.00 = exact match only · "
-                     "default 0.95 (แม่นๆ)",
-                key="import_fuzzy_threshold",
-            )
-            if abs(fuzzy_threshold - saved_fuzzy_ratio) > 1e-6:
-                preferences_manager.set_setting("proofreading_settings", "ab_mode",
-                    {**ab_mode_prefs, "import_fuzzy_min_ratio": float(fuzzy_threshold)})
-                ab_mode_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {})
-
-            if st.button(" **นำเข้าการแก้ไข**", width='stretch'):
+            if st.button(" **นำเข้าการแก้ไข**", width='stretch', key="ab_btn_import"):
                 # ส่ง threshold เข้าไปด้วย (ถ้าฟังก์ชันรองรับ — backward compat)
                 import_signature = inspect.signature(proofreader.grab_and_import_file)
                 if "fuzzy_min_ratio" in import_signature.parameters:
@@ -422,11 +496,11 @@ def render(proofreader, file_processor) -> None:
         col4, col5 = st.columns(2)
 
         with col4:
-            if st.button(" **แก้ไขไฟล์**", width='stretch'):
+            if st.button(" **แก้ไขไฟล์**", width='stretch', key="ab_btn_fix"):
                 file_processor.fix_files(proofreader.found_errors)
 
         with col5:
-            if st.button(" **ทำความสะอาดไฟล์**", width='stretch'):
+            if st.button(" **ทำความสะอาดไฟล์**", width='stretch', key="ab_btn_clean"):
                 file_processor.clean_final_files()
 
         # Status Display
@@ -478,16 +552,20 @@ def render(proofreader, file_processor) -> None:
             """, unsafe_allow_html=True)
 
     with tab_normal_mode:
+        # Dynamic stepper เดียวกับ AB mode — UX consistent
+        nm_active, nm_done = _normal_step_state(proofreader, _normal_export_exists())
+        _render_stepper(nm_active, nm_done)
+
         st.markdown("""
-        <div style="background: var(--ink-surface-tint); padding: 1.25rem;
+        <div style="background: var(--ink-surface-tint); padding: 1rem 1.25rem;
                     border-radius: var(--ink-radius-lg);
                     border-left: 4px solid var(--ink-orange);
-                    margin-bottom: 1.25rem; color: var(--ink-text);">
-            <h4 style="margin: 0; color: var(--ink-orange-dark);">
+                    margin-bottom: 1rem; color: var(--ink-text);">
+            <h5 style="margin: 0; color: var(--ink-orange-dark);">
                 โหมดทั่วไป (สแกนทุกบรรทัด)
-            </h4>
-            <p style="margin: 0.5rem 0 0 0; color: var(--ink-text-muted);">
-                ใช้สำหรับตรวจภาษาต่างประเทศในไฟล์ที่ไม่มีโครงสร้าง [A]/[B] เช่น หลังแปลเสร็จ
+            </h5>
+            <p style="margin: 0.4rem 0 0 0; color: var(--ink-text-muted); font-size: 0.9em;">
+                สำหรับไฟล์ที่ไม่มี [A]/[B] — จับคู่กลับด้วยชื่อไฟล์ + เลขบรรทัด
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -563,7 +641,8 @@ def render(proofreader, file_processor) -> None:
             "ระบุเส้นทางโฟลเดอร์เอง:",
                 value=str(proofreader.normal_mode_source) if proofreader.normal_mode_source else "",
                 placeholder="เช่น: C:\\Users\\Username\\Desktop\\translated หรือ ./custom-input",
-                help="รองรับทั้งเส้นทางสัมบูรณ์และสัมพัทธ์"
+                help="รองรับทั้งเส้นทางสัมบูรณ์และสัมพัทธ์",
+                key="normal_custom_path_input",
             )
 
             if custom_path_input.strip():
@@ -596,18 +675,166 @@ def render(proofreader, file_processor) -> None:
 
         st.markdown("---")
 
-        analyze_btn = st.button(" **วิเคราะห์โหมดทั่วไป**", type="primary", width='stretch')
+        # ── Settings panel (chunk_lines / destination) — แสดงค้างไว้เสมอ
+        normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+        saved_chunk_lines = int(normal_prefs.get("chunk_lines", 500) or 500)
+        saved_dest = normal_prefs.get("fix_destination", str(paths.FINISH_DIR))
 
-        if analyze_btn:
-            with st.spinner("กำลังวิเคราะห์โหมดทั่วไป..."):
-                proofreader.analyze_normal_mode(
-                    target_path if target_path else proofreader.normal_mode_source,
-                    normal_check_foreign,
-                    normal_check_numbers,
-                    normal_check_english
+        with st.expander("ตั้งค่าส่งออก / แก้ไขไฟล์", expanded=True):
+            col_setting1, col_setting2 = st.columns(2)
+            with col_setting1:
+                chunk_lines = st.number_input(
+                    "แบ่ง chunk โดยจำนวนบรรทัด (~ ต่อไฟล์) — 0 = ไม่ split",
+                    min_value=0, max_value=5000, step=50, value=saved_chunk_lines,
+                    help="ค่า ~500 บรรทัด/file พอดี token AI · เขียน master เสมอ + ถ้าตั้ง > 0 "
+                         "จะแบ่งเป็น normal_mode_errors_001.txt, _002.txt, ...",
+                    key="normal_chunk_lines",
                 )
-            st.toast("วิเคราะห์โหมดทั่วไปเสร็จสิ้น!")
+                if int(chunk_lines) != saved_chunk_lines:
+                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                        {**normal_prefs, "chunk_lines": int(chunk_lines)})
+                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
 
+            with col_setting2:
+                # โฟลเดอร์ปลายทาง — preset ตามสเต็ป pipeline Input → Fix → Clean → Finish
+                # ห้ามทำลายไฟล์ต้นทาง — auto suggest step ถัดไปตาม source
+                dest_preset_folders = {
+                    "Finish": paths.FINISH_DIR,
+                    "Clean": paths.CLEAN_DIR,
+                    "Fix": paths.FIX_DIR,
+                    "Input": paths.INPUT_DIR,
+                }
+
+                # Pipeline next-step mapping: source → suggested destination
+                _PIPELINE_NEXT = {
+                    "Input": "Fix",
+                    "Fix": "Clean",
+                    "Clean": "Finish",
+                }
+                suggested_dest = _PIPELINE_NEXT.get(selected_folder_option, "Finish")
+
+                # Label เพิ่ม "(แนะนำ)" บน step ที่ pipeline แนะนำ
+                dest_labels = [
+                    f"{name} (แนะนำ)" if name == suggested_dest else name
+                    for name in dest_preset_folders.keys()
+                ]
+                # mapping label → folder path
+                dest_label_to_path = dict(zip(dest_labels, dest_preset_folders.values()))
+                dest_options = dest_labels + ["ระบุเส้นทางเอง"]
+
+                # default index: ใช้ saved_dest ถ้ามี + ตรงกับ preset, ไม่งั้นใช้ suggested
+                saved_dest_idx = None
+                for i, path in enumerate(dest_preset_folders.values()):
+                    if str(path) == saved_dest:
+                        saved_dest_idx = i
+                        break
+                if saved_dest_idx is None:
+                    if saved_dest and saved_dest not in [str(p) for p in dest_preset_folders.values()]:
+                        # saved = custom path
+                        saved_dest_idx = len(dest_options) - 1
+                    else:
+                        # no saved → ใช้ suggested จาก pipeline
+                        suggested_label = f"{suggested_dest} (แนะนำ)"
+                        saved_dest_idx = dest_options.index(suggested_label)
+
+                selected_dest_option = st.selectbox(
+                    "โฟลเดอร์ปลายทาง (เขียนไฟล์ที่แก้แล้ว):",
+                    options=dest_options,
+                    index=saved_dest_idx,
+                    help=f"Pipeline: Input → Fix → Clean → Finish · ต้นทาง = `{selected_folder_option}` "
+                         f"→ แนะนำ `{suggested_dest}` (step ถัดไป)",
+                    key="normal_fix_dest_preset",
+                )
+
+            if selected_dest_option == "ระบุเส้นทางเอง":
+                dest_input = st.text_input(
+                    "ระบุเส้นทางโฟลเดอร์ปลายทางเอง:",
+                    value=saved_dest if saved_dest not in [str(p) for p in dest_preset_folders.values()] else "",
+                    placeholder=f"เช่น {paths.FINISH_DIR}",
+                    key="normal_fix_destination_custom",
+                )
+                if dest_input.strip() and dest_input != saved_dest:
+                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                        {**normal_prefs, "fix_destination": dest_input.strip()})
+                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+                destination_dir = Path(dest_input.strip()).expanduser() if dest_input.strip() else paths.FINISH_DIR
+            else:
+                destination_dir = dest_label_to_path[selected_dest_option]
+                if str(destination_dir) != saved_dest:
+                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                        {**normal_prefs, "fix_destination": str(destination_dir)})
+                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+
+            # เตือนถ้าโฟลเดอร์ปลายทาง = โฟลเดอร์ต้นทาง (จะทับไฟล์เดิม)
+            if target_path and destination_dir and Path(target_path).resolve() == Path(destination_dir).resolve():
+                st.warning(
+                    f"โฟลเดอร์ปลายทาง = โฟลเดอร์ต้นทาง (`{destination_dir}`) "
+                    "— ไฟล์เดิมจะถูกเขียนทับ! เปลี่ยนโฟลเดอร์ปลายทางเพื่อความปลอดภัย"
+                )
+
+        # ── การดำเนินการหลัก (4 ปุ่ม — แสดงเสมอ แบบโหมด AB)
+        st.markdown("####  การดำเนินการหลัก")
+        col_act1, col_act2, col_act3, col_act4 = st.columns(4)
+
+        has_errors = bool(proofreader.normal_mode_errors)
+
+        with col_act1:
+            if st.button(
+                " **วิเคราะห์โหมดทั่วไป**",
+                type="primary",
+                width='stretch',
+                key="nm_btn_analyze",
+            ):
+                with st.spinner("กำลังวิเคราะห์โหมดทั่วไป..."):
+                    proofreader.analyze_normal_mode(
+                        target_path if target_path else proofreader.normal_mode_source,
+                        normal_check_foreign,
+                        normal_check_numbers,
+                        normal_check_english
+                    )
+                st.toast("วิเคราะห์โหมดทั่วไปเสร็จสิ้น!")
+                # rerun ทันทีให้ UI refresh ค่าใหม่ทั้งหมด (has_errors, stats, summary)
+                # — ไม่งั้นปุ่ม "ส่งออก/แก้ไข" + status box ใช้ค่าเก่าจากก่อนกด
+                st.rerun()
+
+        with col_act2:
+            if st.button(
+                " **ส่งออกแก้กลับได้**",
+                disabled=not has_errors,
+                width='stretch',
+                key="nm_btn_export",
+            ):
+                proofreader.export_normal_mode_errors(chunk_lines=int(chunk_lines))
+
+        with col_act3:
+            # เปิดให้กดได้เสมอ — ฟังก์ชันจะตรวจสอบ + แจ้ง user เองถ้ายังไม่ได้วิเคราะห์
+            if st.button(
+                " **นำเข้าการแก้ไข**",
+                width='stretch',
+                key="nm_btn_import",
+            ):
+                proofreader.import_normal_mode_corrections()
+                st.rerun()
+
+        with col_act4:
+            if st.button(
+                " **แก้ไขไฟล์**",
+                disabled=not has_errors,
+                width='stretch',
+                key="nm_btn_fix",
+            ):
+                proofreader.fix_normal_mode_files(
+                    destination_dir=destination_dir,
+                    in_place=False,
+                )
+                st.rerun()
+
+        st.caption(
+            "โหมดทั่วไปไม่มี [A] ให้ตรวจ — ระบบจับคู่ด้วย **ชื่อไฟล์ + เลขบรรทัด** ตรงเป๊ะเท่านั้น "
+            "(ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export)"
+        )
+
+        # ── สรุปผลการสแกน — แสดงเมื่อเคยวิเคราะห์แล้ว
         stats = proofreader.normal_mode_stats
         if stats.get('files', 0) > 0:
             st.markdown("####  สรุปผลการสแกน")
@@ -633,7 +860,8 @@ def render(proofreader, file_processor) -> None:
             with col_stat6:
                 st.metric(" ตัวเลข", f"{stats.get('numbers', 0):,}")
 
-        if proofreader.normal_mode_errors:
+        # ── ตารางข้อผิดพลาด + ปุ่ม download CSV (แสดงเมื่อมี errors)
+        if has_errors:
             st.markdown("####  บรรทัดที่พบภาษาต่างประเทศ / ตัวเลข")
             try:
                 normal_df = pd.DataFrame(proofreader.normal_mode_errors)
@@ -652,6 +880,15 @@ def render(proofreader, file_processor) -> None:
                 'file_path': 'เส้นทางไฟล์'
                 }, inplace=True)
                 st.dataframe(normal_df, width='stretch')
+
+                st.download_button(
+                    label=" ดาวน์โหลด CSV",
+                    data=normal_df.to_csv(index=False).encode('utf-8-sig'),
+                    file_name="normal_mode_errors.csv",
+                    mime="text/csv",
+                    width='stretch',
+                    key="nm_dl_csv",
+                )
             except Exception:
                 st.warning(" ไม่สามารถสร้างตารางสรุปได้ โปรดดูข้อมูลดิบด้านล่าง")
                 for err in proofreader.normal_mode_errors[:20]:
@@ -659,104 +896,64 @@ def render(proofreader, file_processor) -> None:
                     category_text = f" [{categories}]" if categories else ""
                     st.write(f" `{err['file_name']}` บรรทัด {err['line_number']}: {err['line_content']}{category_text}")
 
-            st.markdown("---")
-            st.markdown("####  ส่งออก / นำเข้า / แก้ไขกลับ")
-            st.caption(
-                "โหมดทั่วไปไม่มี [A] ให้ตรวจ — ระบบจับคู่ด้วย **ชื่อไฟล์ + เลขบรรทัด** ตรงเป๊ะเท่านั้น "
-                "(ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export)"
+        # ── Status box (เหมือนโหมด AB)
+        if has_errors:
+            st.markdown(f"""
+            <div style="background: var(--ink-warn-bg); border: 1px solid var(--ink-warn);
+                        padding: 1rem; border-radius: var(--ink-radius-md); margin: 1rem 0;
+                        color: var(--ink-text);">
+                <h5 style="margin: 0; color: var(--ink-warn);">
+                    พบบรรทัดที่ต้องตรวจ {len(proofreader.normal_mode_errors)} รายการ
+                </h5>
+                <p style="margin: 0.5rem 0 0 0; color: var(--ink-text-muted);">
+                    กด <strong>ส่งออกแก้กลับได้</strong> เพื่อสร้าง
+                    <code>Output/normal_mode_errors.txt</code> + <code>Import/normal_mode_import.txt</code>
+                    แล้วแก้บรรทัด <code>[แก้]</code> ก่อนกด <strong>นำเข้าการแก้ไข</strong>
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        elif stats and stats.get('files', 0) > 0:
+            st.markdown("""
+            <div style="background: var(--ink-success-bg); border: 1px solid var(--ink-success);
+                        padding: 1rem; border-radius: var(--ink-radius-md); margin: 1rem 0;
+                        color: var(--ink-text);">
+                <h5 style="margin: 0; color: var(--ink-success);">
+                    ไม่พบภาษาต่างประเทศ/ตัวเลขตามเงื่อนไขที่เลือก
+                </h5>
+                <p style="margin: 0.5rem 0 0 0; color: var(--ink-text-muted);">
+                    ไฟล์ในโฟลเดอร์ที่ตรวจดูเรียบร้อยแล้ว — เปลี่ยน flag การตรวจหรือเลือกโฟลเดอร์อื่นได้
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background: var(--ink-surface-tint); padding: 2rem;
+                        border-radius: var(--ink-radius-xl); text-align: center;
+                        border: 2px dashed var(--ink-border-orange); color: var(--ink-text);">
+                <h4 style="margin: 0; color: var(--ink-orange-dark);">เริ่มต้นการทำงาน</h4>
+                <p style="margin: 1rem 0 0 0; color: var(--ink-text-muted); font-size: 1.05rem;">
+                    เลือกโฟลเดอร์ต้นทาง + เงื่อนไขการตรวจ แล้วกด
+                    <strong>วิเคราะห์โหมดทั่วไป</strong>
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with st.expander("คำแนะนำขั้นตอน", expanded=False):
+            st.markdown(
+                """
+                1. **วิเคราะห์โหมดทั่วไป** — ระบบบันทึก (ไฟล์, เลขบรรทัด) ลงหน่วยความจำ
+                2. **ส่งออกแก้กลับได้** — เขียน `Output/normal_mode_errors.txt` + `Import/normal_mode_import.txt`
+                   (รูปแบบ `[เดิม]` / `[แก้]` — ผู้ใช้แก้บรรทัด `[แก้]` เท่านั้น)
+                3. แก้ในไฟล์ `Import/normal_mode_import.txt` หรือส่งให้ AI แก้แล้ววางกลับ `Import/`
+                4. **นำเข้าการแก้ไข** — โปรแกรมจับคู่ด้วย (ชื่อไฟล์ + เลขบรรทัด) ตรงเป๊ะ
+                5. **แก้ไขไฟล์** — เขียนบรรทัดที่แก้แล้วกลับเข้าไฟล์ต้นฉบับ (หรือเขียนไปยัง Finish/)
+
+                **ข้อควรระวัง:** ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export
+                เพราะระบบใช้บรรทัดเหล่านี้จับคู่ — ถ้าผิด ระบบจะข้าม entry นั้นและรายงาน
+
+                **Output ของ project ไหน — ก็ไปลงโฟลเดอร์นั้น** (project ปัจจุบันแสดงในแถบส้มบนสุด)
+                """
             )
-
-            normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
-            saved_chunk_lines = int(normal_prefs.get("chunk_lines", 0) or 0)
-            saved_in_place = bool(normal_prefs.get("fix_in_place", False))
-            saved_dest = normal_prefs.get("fix_destination", str(paths.FINISH_DIR))
-
-            col_setting1, col_setting2 = st.columns(2)
-            with col_setting1:
-                chunk_lines = st.number_input(
-                    "แบ่ง chunk โดยจำนวนบรรทัด (~ ต่อไฟล์) — 0 = ไม่ split",
-                    min_value=0, max_value=5000, step=50, value=saved_chunk_lines,
-                    help="ค่า ~500 บรรทัด/file พอดี token AI · เขียน master เสมอ + ถ้าตั้ง > 0 "
-                         "จะแบ่งเป็น normal_mode_errors_001.txt, _002.txt, ...",
-                    key="normal_chunk_lines",
-                )
-                if int(chunk_lines) != saved_chunk_lines:
-                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
-                        {**normal_prefs, "chunk_lines": int(chunk_lines)})
-                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
-
-            with col_setting2:
-                in_place = st.checkbox(
-                    "เขียนทับไฟล์ต้นทาง (in-place)",
-                    value=saved_in_place,
-                    help="ถ้าติ๊ก จะเขียนทับไฟล์เดิมในโฟลเดอร์ที่สแกน — ทำลายของเดิม แนะนำให้สำรองก่อน",
-                    key="normal_fix_in_place",
-                )
-                if in_place != saved_in_place:
-                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
-                        {**normal_prefs, "fix_in_place": in_place})
-                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
-
-            if not in_place:
-                dest_input = st.text_input(
-                    "โฟลเดอร์ปลายทาง (เขียนไฟล์ที่แก้แล้ว):",
-                    value=saved_dest,
-                    help=f"default: `{paths.FINISH_DIR}` — เขียนไฟล์ชื่อเดียวกันไว้ที่นี่",
-                    key="normal_fix_destination",
-                )
-                if dest_input.strip() and dest_input != saved_dest:
-                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
-                        {**normal_prefs, "fix_destination": dest_input.strip()})
-                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
-                destination_dir = Path(dest_input.strip()) if dest_input.strip() else paths.FINISH_DIR
-            else:
-                destination_dir = None
-                st.warning("โหมดเขียนทับ — ไฟล์ต้นทางจะถูกเปลี่ยน ต้นฉบับเดิมจะหาย!")
-
-            st.markdown("---")
-            col_act1, col_act2, col_act3, col_act4 = st.columns(4)
-
-            with col_act1:
-                if st.button(" **ส่งออกแก้กลับได้**", type="primary", width='stretch'):
-                    proofreader.export_normal_mode_errors(chunk_lines=int(chunk_lines))
-
-            with col_act2:
-                if st.button(" **นำเข้าการแก้ไข**", width='stretch'):
-                    proofreader.import_normal_mode_corrections()
-
-            with col_act3:
-                if st.button(" **แก้ไขไฟล์**", width='stretch'):
-                    proofreader.fix_normal_mode_files(
-                        destination_dir=destination_dir,
-                        in_place=in_place,
-                    )
-
-            with col_act4:
-                df_for_export = normal_df.copy()
-                st.download_button(
-                    label=" ดาวน์โหลด CSV",
-                    data=df_for_export.to_csv(index=False).encode('utf-8-sig'),
-                    file_name="normal_mode_errors.csv",
-                    mime="text/csv",
-                    width='stretch'
-                )
-
-            with st.expander("คำแนะนำขั้นตอน", expanded=False):
-                st.markdown(
-                    """
-                    1. **วิเคราะห์โหมดทั่วไป** — ระบบบันทึก (ไฟล์, เลขบรรทัด) ลงหน่วยความจำ
-                    2. **ส่งออกแก้กลับได้** — เขียน `Output/normal_mode_errors.txt` + `Import/normal_mode_import.txt`
-                       (รูปแบบ `[เดิม]` / `[แก้]` — ผู้ใช้แก้บรรทัด `[แก้]` เท่านั้น)
-                    3. แก้ในไฟล์ `Import/normal_mode_import.txt` หรือส่งให้ AI แก้แล้ววางกลับ `Import/`
-                    4. **นำเข้าการแก้ไข** — โปรแกรมจับคู่ด้วย (ชื่อไฟล์ + เลขบรรทัด) ตรงเป๊ะ
-                    5. **แก้ไขไฟล์** — เขียนบรรทัดที่แก้แล้วกลับเข้าไฟล์ต้นฉบับ (หรือเขียนไปยัง Finish/)
-
-                    **ข้อควรระวัง:** ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export
-                    เพราะระบบใช้บรรทัดเหล่านี้จับคู่ — ถ้าผิด ระบบจะข้าม entry นั้นและรายงาน
-                    """
-                )
-        elif stats and stats.get('files', 0) > 0 and stats.get('errors', 0) == 0:
-            st.success(" โหมดทั่วไป: ไม่พบภาษาต่างประเทศหรือเลขที่ตั้งใจให้ตรวจ")
 
     with tab_multi_folder:
         st.markdown("""
@@ -849,7 +1046,7 @@ def render(proofreader, file_processor) -> None:
 
         st.markdown("---")
 
-        analyze_multi_btn = st.button(" **วิเคราะห์หลายโฟลเดอร์**", type="primary", width='stretch')
+        analyze_multi_btn = st.button(" **วิเคราะห์หลายโฟลเดอร์**", type="primary", width='stretch', key="mf_btn_analyze")
 
         if analyze_multi_btn:
             with st.spinner("กำลังวิเคราะห์หลายโฟลเดอร์..."):
@@ -908,7 +1105,7 @@ def render(proofreader, file_processor) -> None:
             st.markdown("---")
 
             # ปุ่มบันทึกและเปลี่ยนชื่อ
-            if st.button("บันทึกผลและเปลี่ยนชื่อโฟลเดอร์", type="primary", width='stretch'):
+            if st.button("บันทึกผลและเปลี่ยนชื่อโฟลเดอร์", type="primary", width='stretch', key="mf_btn_rename"):
                 proofreader.export_multiple_folders_errors()
 
             st.markdown("""

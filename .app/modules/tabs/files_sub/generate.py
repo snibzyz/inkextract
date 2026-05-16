@@ -1,247 +1,195 @@
-"""tabs/files_sub/generate.py — Sub-tab 'generate' ของ tab จัดการไฟล์"""
+"""tabs/files_sub/generate.py — สร้างไฟล์ .txt เปล่าสำหรับเตรียมเขียน
+
+STEP-based UX: ตั้งชื่อไฟล์ → จำนวน → เนื้อหา option → ปลายทาง → preview → กดสร้าง
+"""
 from __future__ import annotations
 import streamlit as st
-import pandas as pd
 from pathlib import Path
 
-from modules import paths, ui
-from modules.format_checker import FormatChecker
+from modules import paths
+from modules.preferences_manager import preferences_manager
+from . import _helpers as h
 
 
 def render(file_processor) -> None:
-    """generate sub-tab"""
-    st.markdown("####  สร้างไฟล์ TXT เปล่า")
-    st.info(" สร้างไฟล์ .txt เปล่าสำหรับเตรียมเขียนเนื้อหา ไฟล์จะถูกสร้างในโฟลเดอร์ `0-input`")
+    """สร้างไฟล์เปล่า tab — สร้าง template หลายๆ ไฟล์พร้อมกัน"""
+    st.markdown(
+        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        'สร้างไฟล์ .txt เปล่าหลายๆ ไฟล์พร้อมกัน เผื่อเตรียมเขียน เช่น '
+        '<code>Chapter_0001.txt</code> ถึง <code>Chapter_0010.txt</code>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-    # Settings Section
-    st.markdown("####  การตั้งค่าการสร้างไฟล์")
+    prefs = preferences_manager.get_setting("file_processing", "generate_settings", {}) or {}
 
-    # ใช้ session state เพื่อจำค่าล่าสุด
-    if 'generate_file_prefix' not in st.session_state:
-        st.session_state.generate_file_prefix = "Chapter "
-    if 'generate_file_suffix' not in st.session_state:
-        st.session_state.generate_file_suffix = ""
-    if 'generate_number_padding' not in st.session_state:
-        st.session_state.generate_number_padding = 3
-    if 'generate_start_number' not in st.session_state:
-        st.session_state.generate_start_number = 1
-    if 'generate_batch_size' not in st.session_state:
-        st.session_state.generate_batch_size = 10
-
-    col_left, col_right = st.columns([1, 1])
-
-    with col_left:
-        st.markdown("** ชื่อไฟล์**")
+    # ───────────── ขั้นที่ 1 ─────────────
+    h.step_header(1, "ตั้งชื่อไฟล์")
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
         file_prefix = st.text_input(
-        "คำนำหน้า (Prefix)",
-            value=st.session_state.generate_file_prefix,
-            help="คำที่ใส่หน้าหมายเลข",
-            key="generate_file_prefix_input"
+            "คำนำหน้า",
+            value=prefs.get("file_prefix", "Chapter "),
+            help="เช่น Chapter_ → Chapter_0001.txt",
+            key="gen_prefix",
         )
-
-        file_suffix = st.text_input(
-        "คำต่อท้าย (Suffix) (ไม่บังคับ)",
-            value=st.session_state.generate_file_suffix,
-            placeholder="เช่น _draft",
-            help="คำที่ใส่หลังหมายเลข",
-            key="generate_file_suffix_input"
-        )
-
-        st.markdown("** การจัดรูปแบบ**")
+    with col_b:
         number_padding = st.number_input(
-        "จำนวนหลักเลข",
-            min_value=1,
-            max_value=5,
-            value=st.session_state.generate_number_padding,
-            help="001 = 3 หลัก, 0001 = 4 หลัก",
-            key="generate_number_padding_input"
+            "เลขนำหน้า (padding)",
+            min_value=1, max_value=6,
+            value=int(prefs.get("number_padding", 4)),
+            help="4 = 0001, 0002, ... (ค่าแนะนำ)",
+            key="gen_pad",
+        )
+    with col_c:
+        file_suffix = st.text_input(
+            "คำต่อท้าย (ไม่บังคับ)",
+            value=prefs.get("file_suffix", ""),
+            help="เช่น _draft → Chapter_0001_draft.txt",
+            key="gen_suffix",
         )
 
-    with col_right:
-        st.markdown("** จำนวนไฟล์**")
+    # ───────────── ขั้นที่ 2 ─────────────
+    h.step_header(2, "จำนวนไฟล์ที่จะสร้าง")
+    col_d, col_e = st.columns(2)
+    with col_d:
+        start_number = st.number_input(
+            "เริ่มที่เลข",
+            min_value=1, max_value=99999,
+            value=int(prefs.get("start_number", 1)),
+            help="เลขแรก เช่น 1 → Chapter_0001",
+            key="gen_start",
+        )
+    with col_e:
+        batch_size = st.number_input(
+            "สร้างทั้งหมดกี่ไฟล์",
+            min_value=1, max_value=500,
+            value=int(prefs.get("batch_size", 10)),
+            help="จำนวนไฟล์ที่จะสร้าง (สูงสุด 500 ไฟล์)",
+            key="gen_batch",
+        )
 
-        col_num1, col_num2 = st.columns(2)
-        with col_num1:
-            start_number = st.number_input(
-            "หมายเลขเริ่มต้น",
-                min_value=1,
-                max_value=9999,
-                value=st.session_state.generate_start_number,
-                help="หมายเลขไฟล์แรก",
-                key="generate_start_number_input"
-            )
-
-        with col_num2:
-            batch_size = st.number_input(
-            "จำนวนไฟล์ที่จะสร้าง",
-                min_value=1,
-                max_value=100,
-                value=st.session_state.generate_batch_size,
-                help="จำนวนไฟล์ที่ต้องการสร้างในครั้งนี้",
-                key="generate_batch_size_input"
-            )
-
-        # แสดงตัวอย่าง
-        st.markdown("** ตัวอย่าง**")
-        example_filename = f"{file_prefix}{str(start_number).zfill(number_padding)}{file_suffix}.txt"
-        st.info(f"`{example_filename}`")
-
-    # อัปเดต session state
-    st.session_state.generate_file_prefix = file_prefix
-    st.session_state.generate_file_suffix = file_suffix
-    st.session_state.generate_number_padding = number_padding
-    st.session_state.generate_start_number = start_number
-    st.session_state.generate_batch_size = batch_size
-
-    # คำนวณหมายเลขสิ้นสุด
     end_number = start_number + batch_size - 1
-    st.info(f" จะสร้างไฟล์หมายเลข {start_number} ถึง {end_number}")
+    st.caption(f"จะสร้างไฟล์เลขที่ **{start_number}** ถึง **{end_number}** (รวม **{batch_size:,}** ไฟล์)")
 
-    # ออปชันพิเศษ
-    st.markdown("---")
-    st.markdown("####  ออปชันพิเศษ")
-
-    col_opt1, col_opt2 = st.columns(2)
-
-    with col_opt1:
-        # ใช้ session state เพื่อจำค่าล่าสุด
-        if 'generate_add_chapter_title' not in st.session_state:
-            st.session_state.generate_add_chapter_title = True
-        if 'generate_chapter_title_template' not in st.session_state:
-            st.session_state.generate_chapter_title_template = "ระบบเซียนหมื่นพรสวรรค์ ตอนที่ "
-
+    # ── ตัวเลือกขั้นสูง — ใส่ชื่อตอนในบรรทัดแรก
+    add_chapter_title = False
+    use_filename_as_title = True
+    chapter_title_template = ""
+    with st.expander("ตัวเลือกขั้นสูง (ใส่ชื่อตอนเป็นบรรทัดแรกในไฟล์)", expanded=False):
         add_chapter_title = st.checkbox(
-        " เพิ่มชื่อตอนในบรรทัดแรก",
-            value=st.session_state.generate_add_chapter_title,
-            help="เพิ่มชื่อตอนในบรรทัดแรกของไฟล์",
-            key="generate_chapter_title_checkbox"
+            "ใส่ชื่อตอนในบรรทัดแรกของแต่ละไฟล์",
+            value=bool(prefs.get("add_chapter_title", False)),
+            help="ติ๊กถ้าต้องการให้ระบบใส่ชื่อตอนเป็นบรรทัดแรก เว้นบรรทัด พร้อมพิมพ์เนื้อหา · "
+                 "ส่วนใหญ่ไม่ต้องใช้ ถ้าจะพิมพ์เอง",
+            key="gen_add_title",
         )
-
-        # อัปเดต session state
-        st.session_state.generate_add_chapter_title = add_chapter_title
 
         if add_chapter_title:
-            use_filename_as_title = st.checkbox(
-            " ใช้ชื่อไฟล์เป็นชื่อตอน",
-                value=True,
-                help="ใช้ชื่อไฟล์ (ไม่รวม .txt) เป็นชื่อตอน"
+            title_mode = st.radio(
+                "รูปแบบชื่อตอน:",
+                options=["ใช้ชื่อไฟล์เป็นชื่อตอน", "กำหนดเอง"],
+                index=0 if prefs.get("use_filename_as_title", True) else 1,
+                horizontal=True,
+                key="gen_title_mode",
             )
+            use_filename_as_title = (title_mode == "ใช้ชื่อไฟล์เป็นชื่อตอน")
 
             if not use_filename_as_title:
                 chapter_title_template = st.text_input(
-                "รูปแบบชื่อตอนแบบกำหนดเอง",
-                    value=st.session_state.generate_chapter_title_template,
-                    help="ข้อความที่จะตามด้วยหมายเลขตอน เช่น 'ระบบเซียนหมื่นพรสวรรค์ ตอนที่ 001'",
-                    key="generate_chapter_title_input"
+                    "รูปแบบชื่อตอน (เลขจะถูกต่อท้าย)",
+                    value=prefs.get("chapter_title_template", ""),
+                    placeholder="เช่น 'ตอนที่ '",
+                    help="เช่น 'ตอนที่ ' → ตอนที่ 0001, ตอนที่ 0002, ...",
+                    key="gen_title_tpl",
                 )
 
-                # อัปเดต session state
-                st.session_state.generate_chapter_title_template = chapter_title_template
-            else:
-                chapter_title_template = ""
-        else:
-            chapter_title_template = ""
-            use_filename_as_title = False
+    # ───────────── ขั้นที่ 4 ─────────────
+    h.step_header(4, "เลือกโฟลเดอร์ปลายทาง",
+                  "ไฟล์ใหม่จะถูกสร้างไว้ที่นี่")
+    dest_path, _ = h.folder_select(
+        "โฟลเดอร์ปลายทาง:",
+        key="gen_dest",
+        presets=["Input", "Fix", "Clean"],
+        suggested="Input",
+        help="ค่าแนะนำคือ Input — โฟลเดอร์เริ่มต้นของ pipeline แปล",
+        saved_value=prefs.get("dest_folder"),
+        show_count=False,
+    )
 
-    with col_opt2:
-        if add_chapter_title:
-            # แสดงตัวอย่างชื่อตอน
-            if use_filename_as_title:
-                example_filename_for_title = f"{file_prefix}{str(start_number).zfill(number_padding)}{file_suffix}"
-                st.info(f" ตัวอย่างเนื้อหาในไฟล์:\n```\n{example_filename_for_title}\n\n[เนื้อหา...]\n```")
-                st.caption(" ใช้ชื่อไฟล์ (ไม่รวม .txt) เป็นชื่อตอน + บรรทัดว่าง")
-            else:
-                example_title = f"{chapter_title_template}{str(start_number).zfill(number_padding)}"
-                st.info(f" ตัวอย่างเนื้อหาในไฟล์:\n```\n{example_title}\n\n[เนื้อหา...]\n```")
-                st.caption(" ใช้รูปแบบกำหนดเอง + บรรทัดว่าง")
-        else:
-            st.markdown("")  # Placeholder เพื่อให้ layout สมดุล
+    # บันทึก settings
+    new_settings = {
+        "file_prefix": file_prefix,
+        "file_suffix": file_suffix,
+        "number_padding": int(number_padding),
+        "start_number": int(start_number),
+        "batch_size": int(batch_size),
+        "add_chapter_title": add_chapter_title,
+        "use_filename_as_title": use_filename_as_title,
+        "chapter_title_template": chapter_title_template,
+        "dest_folder": str(dest_path) if dest_path else "",
+    }
+    if new_settings != prefs:
+        preferences_manager.set_setting("file_processing", "generate_settings", new_settings)
 
-    # Preview Section
-    example_filename = f"{file_prefix}{str(start_number).zfill(number_padding)}{file_suffix}.txt"
+    # ───────────── PREVIEW ─────────────
     st.markdown("---")
-    st.info(f" **ตัวอย่างชื่อไฟล์**: `{example_filename}`")
+    preview_names = h.gen_filenames_preview(file_prefix, int(number_padding),
+                                            file_suffix, int(start_number), int(batch_size))
+    h.filename_preview(preview_names, total=batch_size,
+                       title=f"ชื่อไฟล์ที่จะสร้าง")
 
-    # File list preview
-    if batch_size <= 20:  # แสดงตัวอย่างถ้าไม่เยอะเกินไป
-        st.markdown("** รายการไฟล์ที่จะสร้าง:**")
-        preview_files = []
-        for i in range(start_number, start_number + batch_size):
-            filename = f"{file_prefix}{str(i).zfill(number_padding)}{file_suffix}.txt"
-            preview_files.append(filename)
-
-        # แสดงเป็น columns
-        cols = st.columns(3)
-        for idx, filename in enumerate(preview_files):
-            with cols[idx % 3]:
-                st.write(f" `{filename}`")
+    # ตัวอย่างเนื้อหา
+    if add_chapter_title:
+        if use_filename_as_title:
+            example_title = f"{file_prefix}{str(start_number).zfill(int(number_padding))}{file_suffix}"
+        else:
+            example_title = f"{chapter_title_template}{str(start_number).zfill(int(number_padding))}"
+        example_content = f"{example_title}\n\n[...เขียนเนื้อหาที่นี่...]"
     else:
-        st.markdown(f"** จะสร้าง {batch_size} ไฟล์** (เยอะเกินไปจึงไม่แสดงรายการ)")
+        example_content = "[ไฟล์ว่างเปล่า — พร้อมพิมพ์เนื้อหา]"
+    h.content_preview(example_content, title="ตัวอย่างเนื้อหาในแต่ละไฟล์")
 
-    # Generate Button
-    if st.button(" **สร้างไฟล์**", type="primary", width='stretch'):
-        with st.spinner("กำลังสร้างไฟล์..."):
-            # สร้างโฟลเดอร์ input ถ้าไม่มี
-            input_dir = paths.INPUT_DIR
-            input_dir.mkdir(exist_ok=True)
-
-            created_files = []
-            errors = []
-
+    # ───────────── Action ─────────────
+    st.markdown("---")
+    can_generate = bool(dest_path and file_prefix.strip())
+    if st.button(" **สร้างไฟล์**", type="primary", width='stretch',
+                 disabled=not can_generate, key="gen_btn_run"):
+        with st.spinner(f"กำลังสร้าง {batch_size} ไฟล์..."):
+            dest_path.mkdir(parents=True, exist_ok=True)
+            created, skipped, errors = [], [], []
             for i in range(start_number, start_number + batch_size):
-                filename = f"{file_prefix}{str(i).zfill(number_padding)}{file_suffix}.txt"
-                file_path = input_dir / filename
-
+                filename = f"{file_prefix}{str(i).zfill(int(number_padding))}{file_suffix}.txt"
+                file_path = dest_path / filename
+                if file_path.exists():
+                    skipped.append(filename)
+                    continue
                 try:
-                    # ตรวจสอบว่าไฟล์มีอยู่แล้วหรือไม่
-                    if file_path.exists():
-                        errors.append(f" `{filename}` มีอยู่แล้ว (ข้าม)")
-                    else:
-                        # เตรียมเนื้อหาไฟล์
-                        file_content = ""
-
-                        # เพิ่มชื่อตอนถ้าเลือกออปชันนี้
-                        if add_chapter_title:
-                            if use_filename_as_title:
-                                # ใช้ชื่อไฟล์ (ไม่รวม .txt) เป็นชื่อตอน
-                                chapter_title = f"{file_prefix}{str(i).zfill(number_padding)}{file_suffix}"
-                                file_content = f"{chapter_title}\n\n"# เพิ่มบรรทัดว่าง
-                            elif chapter_title_template:
-                                # ใช้รูปแบบกำหนดเอง
-                                chapter_number = str(i).zfill(number_padding)
-                                chapter_title = f"{chapter_title_template}{chapter_number}"
-                                file_content = f"{chapter_title}\n\n"# เพิ่มบรรทัดว่าง
-
-                        # สร้างไฟล์
-                        file_path.write_text(file_content, encoding="utf-8")
-                        created_files.append(filename)
+                    content = ""
+                    if add_chapter_title:
+                        if use_filename_as_title:
+                            chap_title = f"{file_prefix}{str(i).zfill(int(number_padding))}{file_suffix}"
+                        else:
+                            chap_title = f"{chapter_title_template}{str(i).zfill(int(number_padding))}"
+                        content = f"{chap_title}\n\n"
+                    file_path.write_text(content, encoding='utf-8')
+                    created.append(filename)
                 except Exception as e:
-                    errors.append(f" ไม่สามารถสร้าง `{filename}`: {str(e)}")
+                    errors.append((filename, str(e)))
 
-        # แสดงผลลัพธ์
-        if created_files:
-            st.success(f" สร้างไฟล์สำเร็จ {len(created_files)} ไฟล์!")
-
-            # แสดงรายการไฟล์ที่สร้างสำเร็จ (จำกัด 10 ไฟล์แรก)
-            if len(created_files) <= 10:
-                st.markdown("** ไฟล์ที่สร้างแล้ว:**")
-                for filename in created_files:
-                    st.write(f"`{filename}`")
+        # ผลลัพธ์
+        if created:
+            st.success(f"สร้างไฟล์สำเร็จ {len(created):,} ไฟล์")
+            if len(created) <= 10:
+                for n in created:
+                    st.write(f"`{n}`")
             else:
-                st.write(f"** สร้างไฟล์แล้ว:** `{created_files[0]}` ถึง `{created_files[-1]}`")
-
-            st.toast(f"สร้าง {len(created_files)} ไฟล์สำเร็จ!")
-
-        # แสดงข้อผิดพลาด (ถ้ามี)
+                st.write(f"`{created[0]}` ถึง `{created[-1]}`")
+            st.toast(f"สร้าง {len(created)} ไฟล์สำเร็จ")
+        if skipped:
+            st.warning(f"ข้าม {len(skipped)} ไฟล์ที่มีอยู่แล้ว: {', '.join(f'`{n}`' for n in skipped[:5])}"
+                       + (f" ... และอีก {len(skipped)-5}" if len(skipped) > 5 else ""))
         if errors:
-            st.warning(" มีปัญหาบางส่วน:")
-            for error in errors[:5]:  # แสดงแค่ 5 ข้อผิดพลาดแรก
-                st.write(f"{error}")
-            if len(errors) > 5:
-                st.write(f"... และอีก {len(errors) - 5} รายการ")
-
-        if not created_files and not errors:
-            st.error(" ไม่สามารถสร้างไฟล์ได้")
-
-        # Converter Sub-tab
-
+            st.error(f"สร้างไม่สำเร็จ {len(errors)} ไฟล์:")
+            for n, e in errors[:5]:
+                st.write(f"- `{n}`: {e}")

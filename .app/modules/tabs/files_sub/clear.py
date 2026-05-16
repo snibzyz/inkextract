@@ -1,264 +1,191 @@
-"""tabs/files_sub/clear.py — Sub-tab 'clear' ของ tab จัดการไฟล์"""
+"""tabs/files_sub/clear.py — ลบไฟล์ในโฟลเดอร์ที่เลือก
+
+เลือกโฟลเดอร์ → ดูสรุป → ยืนยัน → ลบ
+"""
 from __future__ import annotations
 import streamlit as st
-import pandas as pd
 from pathlib import Path
+import shutil
 
-from modules import paths, ui
-from modules.format_checker import FormatChecker
+from modules import paths
+from . import _helpers as h
+
+
+# โฟลเดอร์ที่อนุญาตให้ลบได้ + คำอธิบาย
+_FOLDERS = {
+    "Input":    (paths.INPUT_DIR,        "ไฟล์แปลตั้งต้น"),
+    "Raw":      (paths.RAW_INPUT_DIR,    "ไฟล์ raw จีนต้นฉบับ — ห้ามลบถ้ายังไม่สำรอง"),
+    "Fix":      (paths.FIX_DIR,          "ไฟล์ที่แก้ไขแล้ว"),
+    "Clean":    (paths.CLEAN_DIR,        "ไฟล์ที่ทำความสะอาดแล้ว"),
+    "Merge":    (paths.MERGE_DIR,        "ไฟล์ที่รวมแล้ว"),
+    "Separate": (paths.SEPARATE_DIR,     "ไฟล์ที่แยกแล้ว"),
+    "Import":   (paths.IMPORT_FIX_DIR,   "ไฟล์ที่ผู้ใช้แก้กลับ"),
+    "Output":   (paths.OUTPUT_DIR,       "error_trans / รายงาน ฯลฯ"),
+}
+
+# default selection — ปลอดภัย (ไม่ติ๊ก Raw)
+_DEFAULT_SELECTION = {
+    "Input": False,
+    "Raw": False,
+    "Fix": False,
+    "Clean": False,
+    "Merge": False,
+    "Separate": False,
+    "Import": False,
+    "Output": False,
+}
+
+
+def _count(folder: Path) -> int:
+    return len(list(folder.glob("*"))) if folder.exists() else 0
 
 
 def render(file_processor) -> None:
-    """clear sub-tab"""
-    st.markdown("####  ลบไฟล์ในโฟลเดอร์")
-    st.info(" เลือกโฟลเดอร์ที่ต้องการลบไฟล์ทั้งหมด ระวัง! การลบไฟล์ไม่สามารถกู้คืนได้")
+    """ลบไฟล์ tab — ลบไฟล์ในโฟลเดอร์ที่เลือก"""
+    st.markdown(
+        '<div style="background:var(--ink-warn-bg,#fff7ed);padding:0.6rem 0.9rem;'
+        'border-left:3px solid var(--ink-warn,#c2410c);border-radius:0.4rem;'
+        'margin-bottom:0.7rem;color:var(--ink-warn,#c2410c);font-weight:600;font-size:0.92em;">'
+        'การลบไฟล์เป็นแบบถาวร กู้คืนไม่ได้ — กรุณาตรวจสอบก่อนกดยืนยัน'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-    # สถิติไฟล์ในแต่ละโฟลเดอร์
-    st.markdown("####  สถิติไฟล์ในโฟลเดอร์")
-
-    # กำหนดโฟลเดอร์และเส้นทาง (ชื่อ INKIDEA-style PascalCase)
-    folders_info = {
-        "Input": paths.INPUT_DIR,
-        "Raw": paths.RAW_INPUT_DIR,
-        "Fix": paths.FIX_DIR,
-        "Clean": paths.CLEAN_DIR,
-        "Merge": paths.MERGE_DIR,
-        "Separate": paths.SEPARATE_DIR,
-        "Import": paths.IMPORT_FIX_DIR,
-    }
-
-    # แสดงสถิติไฟล์
-    def _count(folder_path):
-        return len(list(folder_path.glob("*"))) if folder_path.exists() else 0
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Input", _count(folders_info["Input"]))
-        st.metric("Raw", _count(folders_info["Raw"]))
-    with col2:
-        st.metric("Fix", _count(folders_info["Fix"]))
-        st.metric("Clean", _count(folders_info["Clean"]))
-    with col3:
-        st.metric("Merge", _count(folders_info["Merge"]))
-        st.metric("Separate", _count(folders_info["Separate"]))
-    with col4:
-        st.metric("Import", _count(folders_info["Import"]))
-
-    st.markdown("---")
-
-    # ตัวเลือกการลบไฟล์
-    st.markdown("#### เลือกโฟลเดอร์ที่ต้องการลบ")
-
-    # ใช้ session state เพื่อจำค่าการเลือก
-    _DEFAULT_CLEAR_SELECTION = {
-        "Input": True,
-        "Raw": False,  # ต้นฉบับล้ำค่า — ปิดไว้เป็น default
-        "Fix": True,
-        "Clean": True,
-        "Merge": False,
-        "Separate": False,
-        "Import": False,
-    }
-    if 'clear_folders_selection' not in st.session_state:
-        st.session_state.clear_folders_selection = dict(_DEFAULT_CLEAR_SELECTION)
+    # init session state
+    if 'clear_selection' not in st.session_state:
+        st.session_state.clear_selection = dict(_DEFAULT_SELECTION)
     else:
-        # เติม keys ใหม่ที่ยังไม่มีใน state เก่า (กัน KeyError ตอน upgrade)
-        for k, v in _DEFAULT_CLEAR_SELECTION.items():
-            st.session_state.clear_folders_selection.setdefault(k, v)
-        # ลบ keys เก่า (legacy lowercase) ออก
-        for legacy_key in list(st.session_state.clear_folders_selection.keys()):
-            if legacy_key not in _DEFAULT_CLEAR_SELECTION:
-                st.session_state.clear_folders_selection.pop(legacy_key, None)
+        # เติม keys ใหม่ (กัน upgrade)
+        for k, v in _DEFAULT_SELECTION.items():
+            st.session_state.clear_selection.setdefault(k, v)
+    if 'clear_confirm' not in st.session_state:
+        st.session_state.clear_confirm = False
 
-    # แบ่งเป็น 2 columns
-    col_left, col_right = st.columns([1, 1])
+    # ───────────── ขั้นที่ 1 ─────────────
+    h.step_header(1, "เลือกโฟลเดอร์ที่ต้องการลบ")
+
+    # เลือกทั้งหมด / ยกเลิก / คืน default
+    col_btn1, col_btn2, col_btn3 = st.columns(3)
+    with col_btn1:
+        if st.button("เลือกทั้งหมด", width='stretch', key="clr_all"):
+            for k in st.session_state.clear_selection:
+                st.session_state.clear_selection[k] = True
+            st.rerun()
+    with col_btn2:
+        if st.button("ยกเลิกทั้งหมด", width='stretch', key="clr_none"):
+            for k in st.session_state.clear_selection:
+                st.session_state.clear_selection[k] = False
+            st.rerun()
+    with col_btn3:
+        if st.button("คืนค่า default", width='stretch', key="clr_reset"):
+            st.session_state.clear_selection = dict(_DEFAULT_SELECTION)
+            st.session_state.clear_confirm = False
+            st.rerun()
+
+    st.markdown("")
+
+    # checkbox list — ใช้ container แบบ 2 columns
+    col_left, col_right = st.columns(2)
+    keys = list(_FOLDERS.keys())
+    half = (len(keys) + 1) // 2
+    left_keys = keys[:half]
+    right_keys = keys[half:]
+
+    def _render_folder_row(name: str):
+        folder, desc = _FOLDERS[name]
+        n_files = _count(folder)
+        col_chk, col_view = st.columns([5, 2])
+        with col_chk:
+            checked = st.checkbox(
+                f"**{name}** — {desc}",
+                value=st.session_state.clear_selection.get(name, False),
+                key=f"clr_chk_{name}",
+            )
+            st.session_state.clear_selection[name] = checked
+            st.caption(f"`{folder}` · พบ {n_files:,} รายการ")
+        with col_view:
+            if n_files > 0:
+                with st.expander(f"ดูรายการ ({n_files})", expanded=False):
+                    files = list(folder.glob("*"))[:50]
+                    for f in files:
+                        st.caption(f"`{f.name}`")
+                    if n_files > 50:
+                        st.caption(f"... และอีก {n_files - 50:,} รายการ")
 
     with col_left:
-        st.markdown("**โฟลเดอร์หลัก**")
-
-        input_selected = st.checkbox(
-            "Input (ไฟล์แปลตั้งต้น)",
-            value=st.session_state.clear_folders_selection["Input"],
-            help="ลบไฟล์แปลในโฟลเดอร์ Input",
-        )
-        st.session_state.clear_folders_selection["Input"] = input_selected
-
-        raw_selected = st.checkbox(
-            "Raw (ไฟล์ raw จีนต้นฉบับ)",
-            value=st.session_state.clear_folders_selection["Raw"],
-            help="ลบไฟล์ raw จีนต้นฉบับ — ระวัง ข้อมูลตั้งต้น",
-        )
-        st.session_state.clear_folders_selection["Raw"] = raw_selected
-
-        fix_selected = st.checkbox(
-            "Fix (ไฟล์ที่แก้ไขแล้ว)",
-            value=st.session_state.clear_folders_selection["Fix"],
-            help="ลบไฟล์ที่แก้ไขแล้วในโฟลเดอร์ Fix",
-        )
-        st.session_state.clear_folders_selection["Fix"] = fix_selected
-
-        clean_selected = st.checkbox(
-            "Clean (ไฟล์ที่ทำความสะอาด — รวม .txt/.md/.docx)",
-            value=st.session_state.clear_folders_selection["Clean"],
-            help="ลบไฟล์ทุกชนิดในโฟลเดอร์ Clean",
-        )
-        st.session_state.clear_folders_selection["Clean"] = clean_selected
-
+        for n in left_keys:
+            _render_folder_row(n)
     with col_right:
-        st.markdown("**โฟลเดอร์ผลลัพธ์**")
+        for n in right_keys:
+            _render_folder_row(n)
 
-        merge_selected = st.checkbox(
-            "Merge (ไฟล์ที่รวมแล้ว)",
-            value=st.session_state.clear_folders_selection["Merge"],
-            help="ลบไฟล์ที่รวมแล้วในโฟลเดอร์ Merge",
-        )
-        st.session_state.clear_folders_selection["Merge"] = merge_selected
-
-        separate_selected = st.checkbox(
-            "Separate (ไฟล์ที่แยกตอนแล้ว)",
-            value=st.session_state.clear_folders_selection["Separate"],
-            help="ลบไฟล์ที่แยกตอนในโฟลเดอร์ Separate",
-        )
-        st.session_state.clear_folders_selection["Separate"] = separate_selected
-
-        import_selected = st.checkbox(
-            "Import (ไฟล์ที่ผู้ใช้แก้กลับ — สำหรับ import)",
-            value=st.session_state.clear_folders_selection["Import"],
-            help="ลบไฟล์ใน Import (ไฟล์ที่ผู้ใช้แก้กลับมาก่อน import)",
-        )
-        st.session_state.clear_folders_selection["Import"] = import_selected
-
-    # ปุ่มรีเซ็ตการเลือก
+    # ───────────── ขั้นที่ 2 — สรุป + ลบ ─────────────
     st.markdown("---")
-    col_reset1, col_reset2, col_reset3 = st.columns([1, 1, 1])
+    selected = [n for n, sel in st.session_state.clear_selection.items() if sel]
 
-    with col_reset1:
-        if st.button("รีเซ็ตเป็นค่าเริ่มต้น", width='stretch'):
-            st.session_state.clear_folders_selection = dict(_DEFAULT_CLEAR_SELECTION)
+    if not selected:
+        st.info("ยังไม่ได้เลือกโฟลเดอร์ — ติ๊กโฟลเดอร์ด้านบนเพื่อเลือกลบ")
+        return
+
+    h.step_header(2, "สรุปก่อนลบ + ยืนยัน")
+    total_files = 0
+    summary_lines = []
+    for n in selected:
+        folder, _ = _FOLDERS[n]
+        cnt = _count(folder)
+        total_files += cnt
+        summary_lines.append(f"**{n}** ({cnt:,} ไฟล์) — `{folder}`")
+
+    st.markdown(
+        f'<div style="background:var(--ink-surface-tint);padding:0.7rem 1rem;'
+        f'border-left:3px solid var(--ink-orange,#f97316);border-radius:0.4rem;'
+        f'margin:0.5rem 0;">'
+        f'จะลบทั้งหมด <b>{total_files:,}</b> รายการ จาก <b>{len(selected)}</b> โฟลเดอร์:'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    for line in summary_lines:
+        st.markdown(f"- {line}")
+
+    # ปุ่มลบ + ยืนยัน
+    if not st.session_state.clear_confirm:
+        if st.button(f" **ลบ {total_files:,} รายการ**", type="primary", width='stretch',
+                     key="clr_btn_delete", disabled=(total_files == 0)):
+            st.session_state.clear_confirm = True
             st.rerun()
-
-    with col_reset2:
-        if st.button(" **เลือกทั้งหมด**", width='stretch'):
-            for folder in st.session_state.clear_folders_selection:
-                st.session_state.clear_folders_selection[folder] = True
-            st.rerun()
-
-    with col_reset3:
-        if st.button(" **ยกเลิกทั้งหมด**", width='stretch'):
-            for folder in st.session_state.clear_folders_selection:
-                st.session_state.clear_folders_selection[folder] = False
-            st.rerun()
-
-    # สรุปการเลือก
-    selected_folders = [folder for folder, selected in st.session_state.clear_folders_selection.items() if selected]
-
-    if selected_folders:
-        st.markdown("---")
-        st.markdown("####  สรุปการเลือก")
-
-        # แสดงโฟลเดอร์ที่เลือกพร้อมจำนวนไฟล์
-        for folder in selected_folders:
-            folder_path = folders_info[folder]
-            if folder_path.exists():
-                file_count = len(list(folder_path.glob("*")))
-                if file_count > 0:
-                    st.warning(f" `{folder}` - {file_count} ไฟล์")
-                else:
-                    st.info(f" `{folder}` - ไม่มีไฟล์")
-            else:
-                st.info(f" `{folder}` - โฟลเดอร์ไม่มีอยู่")
-
-        # ปุ่มลบไฟล์
-        st.markdown("---")
-        st.markdown("####  การดำเนินการลบไฟล์")
-
-        # ใช้ session state สำหรับการยืนยันการลบ
-        if 'clear_confirm' not in st.session_state:
-            st.session_state.clear_confirm = False
-
-        if not st.session_state.clear_confirm:
-            if st.button(" **ลบไฟล์ที่เลือก**", type="primary", width='stretch'):
-                st.session_state.clear_confirm = True
-                st.rerun()
-        else:
-            st.error(" **คำเตือน!** การลบไฟล์ไม่สามารถกู้คืนได้")
-            st.markdown("**คุณแน่ใจหรือไม่ที่จะลบไฟล์ในโฟลเดอร์ต่อไปนี้:**")
-            for folder in selected_folders:
-                st.write(f"• `{folder}`")
-
-            col_yes, col_no = st.columns(2)
-            with col_yes:
-                if st.button(" **ยืนยันการลบ**", type="primary", width='stretch'):
-                    # ดำเนินการลบไฟล์
-                    deleted_count = 0
-                    errors = []
-
-                    with st.spinner("กำลังลบไฟล์..."):
-                        for folder in selected_folders:
-                            folder_path = folders_info[folder]
-                            if folder_path.exists():
-                                try:
-                                    # นับไฟล์ก่อนลบ
-                                    files_to_delete = list(folder_path.glob("*"))
-                                    file_count = len(files_to_delete)
-
-                                    # ลบไฟล์ทั้งหมดในโฟลเดอร์
-                                    for file_path in files_to_delete:
-                                        if file_path.is_file():
-                                            file_path.unlink()
-                                        elif file_path.is_dir():
-                                            import shutil
-                                            shutil.rmtree(file_path)
-
-                                    deleted_count += file_count
-                                    st.success(f" ลบไฟล์ใน `{folder}` สำเร็จ ({file_count} ไฟล์)")
-
-                                except Exception as e:
-                                    errors.append(f" ไม่สามารถลบไฟล์ใน `{folder}`: {str(e)}")
-
-                    # แสดงผลลัพธ์
-                    if deleted_count > 0:
-                        st.success(f" ลบไฟล์สำเร็จทั้งหมด {deleted_count} ไฟล์!")
-                        st.toast(f"ลบไฟล์ {deleted_count} ไฟล์สำเร็จ!")
-
-                    if errors:
-                        st.error(" มีปัญหาบางส่วน:")
-                        for error in errors:
-                            st.write(f"{error}")
-
-                    st.session_state.clear_confirm = False
-                    st.rerun()
-
-            with col_no:
-                if st.button(" **ยกเลิก**", width='stretch'):
-                    st.session_state.clear_confirm = False
-                    st.rerun()
     else:
-        st.info(" กรุณาเลือกโฟลเดอร์ที่ต้องการลบไฟล์")
-
-    # คำแนะนำการใช้งาน
-    st.markdown("---")
-    st.markdown("####  คำแนะนำการใช้งาน")
-
-    col_help1, col_help2 = st.columns([1, 1])
-
-    with col_help1:
-        st.markdown("""
-        ** การใช้งาน:**
-        - เลือกโฟลเดอร์ที่ต้องการลบไฟล์
-        - ค่าเริ่มต้นจะเลือก input, fix, clean, clean-md
-        - การลบไฟล์ไม่สามารถกู้คืนได้
-        - ตรวจสอบจำนวนไฟล์ก่อนลบ
-        """)
-
-    with col_help2:
-        st.markdown("""
-        ** คำเตือน:**
-        - การลบไฟล์เป็นแบบถาวร
-        - ควรสำรองไฟล์สำคัญก่อนลบ
-        - ตรวจสอบโฟลเดอร์ให้ดีก่อนกดยืนยัน
-        - ใช้ปุ่มรีเซ็ตเพื่อกลับค่าเริ่มต้น
-        """)
-
-
-
+        st.error(f"**ยืนยันการลบ {total_files:,} รายการ?** — กู้คืนไม่ได้!")
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button(" **ยืนยันลบเลย**", type="primary", width='stretch',
+                         key="clr_btn_yes"):
+                deleted = 0
+                errors = []
+                with st.spinner("กำลังลบ..."):
+                    for n in selected:
+                        folder, _ = _FOLDERS[n]
+                        if not folder.exists():
+                            continue
+                        try:
+                            for item in folder.glob("*"):
+                                if item.is_file():
+                                    item.unlink()
+                                    deleted += 1
+                                elif item.is_dir():
+                                    shutil.rmtree(item)
+                                    deleted += 1
+                        except Exception as e:
+                            errors.append(f"`{n}`: {e}")
+                st.session_state.clear_confirm = False
+                if deleted:
+                    st.success(f"ลบสำเร็จ {deleted:,} รายการ")
+                    st.toast(f"ลบ {deleted} รายการสำเร็จ")
+                if errors:
+                    st.error("บางส่วนลบไม่สำเร็จ:")
+                    for e in errors[:5]:
+                        st.write(f"- {e}")
+                st.rerun()
+        with col_no:
+            if st.button("ยกเลิก", width='stretch', key="clr_btn_no"):
+                st.session_state.clear_confirm = False
+                st.rerun()

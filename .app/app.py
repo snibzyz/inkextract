@@ -26,6 +26,10 @@ ui.page_setup(page_title=ui.APP_NAME)
 def main():
     # คืนค่าโปรเจกต์ที่ใช้งานล่าสุดจาก registry (idempotent)
     project_manager.restore_active_on_startup()
+    # AppConfig singleton snapshot paths ตอน import (ก่อน restore) — ต้อง re-resolve
+    # ให้ point ที่โปรเจกต์ปัจจุบัน ไม่งั้น output จะลง workspace/ เสมอ
+    from modules.config import app_config
+    app_config.reload_paths()
 
     ui.header()
     update_banner.render()

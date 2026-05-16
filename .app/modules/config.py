@@ -79,7 +79,9 @@ class RegexPatterns:
         self._load_patterns()
 
         # Main patterns - อนุญาตเฉพาะภาษาไทย เครื่องหมายวรรคตอน และตัวเลข
-        self.allowed_chars = re.compile(r'[฀-๿\s\n\r\t.,!?;:()\[\]{}\'"ๆ\-–—/%@#*+=<>|~`^&$฿ -⁯0-9]')
+        # รวม CJK punctuation + fullwidth forms (、。！？，：；、) - punctuation
+        # CJK letters (zh/jp/ko) caught by foreign_combined in step 1 ก่อนเสมอ
+        self.allowed_chars = re.compile(r'[฀-๿\s\n\r\t.,!?;:()\[\]{}\'"ๆ\-–—/%@#*+=<>|~`^&$฿ -⁯0-9　-〿＀-｟￠-￯]')
         self.vocab_pattern = re.compile(r'[一-鿿].*\|.*[฀-๿]')
         self.numbers_pattern = re.compile(r'[0-9]')
         self.english_pattern = re.compile(r'[A-Za-z]')
