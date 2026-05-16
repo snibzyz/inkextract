@@ -238,6 +238,44 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
 }}
 
 /* ============================================================
+ * Selectbox / Multiselect dropdown popup — อ่านง่ายขึ้น
+ * Note: <li> ใช้ virtual scroll height=40px ห้ามแก้ height — แก้ font/padding ในกรอบเดิม
+ * ============================================================ */
+ul[role="listbox"] li[role="option"] {{
+    padding: 0 0.9rem !important;
+    font-size: 0.98rem !important;
+    line-height: 40px !important;   /* ใช้ line-height = container height = แนวกลาง */
+}}
+ul[role="listbox"] li[role="option"] > div {{
+    width: 100% !important;
+}}
+ul[role="listbox"] li[role="option"] > div > div {{
+    font-size: 0.98rem !important;
+    line-height: 1.4 !important;
+    padding: 0 !important;
+}}
+ul[role="listbox"] li[role="option"]:hover {{
+    background: var(--ink-surface-tint, #fff7ed) !important;
+}}
+ul[role="listbox"] li[role="option"][aria-selected="true"] {{
+    background: var(--ink-orange, #f97316) !important;
+    color: white !important;
+    font-weight: 600 !important;
+}}
+ul[role="listbox"] li[role="option"][aria-selected="true"] > div > div {{
+    color: white !important;
+}}
+/* ขยายความกว้าง dropdown popup เพื่อไม่ตัดข้อความ */
+div[data-baseweb="popover"] ul[role="listbox"] {{
+    min-width: 280px !important;
+}}
+/* Selectbox input field — match font size กับ dropdown */
+.stSelectbox div[data-baseweb="select"] > div {{
+    min-height: 40px !important;
+    font-size: 0.98rem !important;
+}}
+
+/* ============================================================
  * File uploader — drag-drop dropzone (สวย ๆ + ใหญ่ + drag feedback)
  * ============================================================ */
 [data-testid="stFileUploaderDropzone"] {{
