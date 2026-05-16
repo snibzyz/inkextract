@@ -776,7 +776,8 @@ def render(proofreader, file_processor) -> None:
         st.markdown("####  การดำเนินการหลัก")
         col_act1, col_act2, col_act3, col_act4 = st.columns(4)
 
-        has_errors = bool(proofreader.normal_mode_errors)
+        # has_errors: อ่านแบบ fresh ที่จุดใช้งานแต่ละปุ่ม (ไม่ snapshot ที่นี่)
+        # — เพื่อให้ปุ่มหลัง analyze อ่านสถานะใหม่ได้ทันที โดยไม่ต้อง st.rerun() ที่ลบ message
 
         with col_act1:
             if st.button(
@@ -793,14 +794,11 @@ def render(proofreader, file_processor) -> None:
                         normal_check_english
                     )
                 st.toast("วิเคราะห์โหมดทั่วไปเสร็จสิ้น!")
-                # rerun ทันทีให้ UI refresh ค่าใหม่ทั้งหมด (has_errors, stats, summary)
-                # — ไม่งั้นปุ่ม "ส่งออก/แก้ไข" + status box ใช้ค่าเก่าจากก่อนกด
-                st.rerun()
 
         with col_act2:
             if st.button(
                 " **ส่งออกแก้กลับได้**",
-                disabled=not has_errors,
+                disabled=not bool(proofreader.normal_mode_errors),
                 width='stretch',
                 key="nm_btn_export",
             ):
@@ -814,12 +812,11 @@ def render(proofreader, file_processor) -> None:
                 key="nm_btn_import",
             ):
                 proofreader.import_normal_mode_corrections()
-                st.rerun()
 
         with col_act4:
             if st.button(
                 " **แก้ไขไฟล์**",
-                disabled=not has_errors,
+                disabled=not bool(proofreader.normal_mode_errors),
                 width='stretch',
                 key="nm_btn_fix",
             ):
@@ -827,7 +824,6 @@ def render(proofreader, file_processor) -> None:
                     destination_dir=destination_dir,
                     in_place=False,
                 )
-                st.rerun()
 
         st.caption(
             "โหมดทั่วไปไม่มี [A] ให้ตรวจ — ระบบจับคู่ด้วย **ชื่อไฟล์ + เลขบรรทัด** ตรงเป๊ะเท่านั้น "
@@ -861,7 +857,7 @@ def render(proofreader, file_processor) -> None:
                 st.metric(" ตัวเลข", f"{stats.get('numbers', 0):,}")
 
         # ── ตารางข้อผิดพลาด + ปุ่ม download CSV (แสดงเมื่อมี errors)
-        if has_errors:
+        if bool(proofreader.normal_mode_errors):
             st.markdown("####  บรรทัดที่พบภาษาต่างประเทศ / ตัวเลข")
             try:
                 normal_df = pd.DataFrame(proofreader.normal_mode_errors)
@@ -897,7 +893,7 @@ def render(proofreader, file_processor) -> None:
                     st.write(f" `{err['file_name']}` บรรทัด {err['line_number']}: {err['line_content']}{category_text}")
 
         # ── Status box (เหมือนโหมด AB)
-        if has_errors:
+        if bool(proofreader.normal_mode_errors):
             st.markdown(f"""
             <div style="background: var(--ink-warn-bg); border: 1px solid var(--ink-warn);
                         padding: 1rem; border-radius: var(--ink-radius-md); margin: 1rem 0;
