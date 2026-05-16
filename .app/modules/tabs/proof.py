@@ -17,65 +17,69 @@ _STEP_LABELS = ["ตั้งค่า", "วิเคราะห์", "ส่�
 
 
 def _render_stepper(active_idx: int, done_until: int = -1) -> None:
-    """แสดง stepper 1-2-3-4-5 แบบ horizontal — visual cue ให้ user รู้ว่าอยู่ step ไหน.
+    """แสดง stepper 1-2-3-4-5 — circle + label ในแนวตั้งต่อ step (no overlap)
 
     Args:
         active_idx: index ของ step ปัจจุบัน (0-based) — highlight ส้ม
         done_until: index ของ step สุดท้ายที่ทำเสร็จแล้ว (0-based, -1 = ยังไม่เริ่ม)
+
+    Visual: connector อยู่ระหว่าง circle เท่านั้น (ไม่ทับ label) เพราะวาง label
+    ใต้ circle เสมอ. ใช้ grid layout — แต่ละ step เป็น column ขนาดเท่ากัน
     """
-    pieces = []
+    cells = []
     for i, label in enumerate(_STEP_LABELS):
         n = i + 1
         if i <= done_until:
-            # ผ่านไปแล้ว — เขียว
-            bg = "var(--ink-success, #16a34a)"
-            color = "white"
-            border = "var(--ink-success, #16a34a)"
+            bg, color, border = "var(--ink-success)", "white", "var(--ink-success)"
             num_html = "&check;"
+            label_color = "var(--ink-success)"
+            label_weight = "600"
         elif i == active_idx:
-            # อยู่ step นี้ — ส้ม brand
-            bg = "var(--ink-orange, #f97316)"
-            color = "white"
-            border = "var(--ink-orange, #f97316)"
+            bg, color, border = "var(--ink-orange)", "white", "var(--ink-orange)"
             num_html = str(n)
+            label_color = "var(--ink-orange-dark)"
+            label_weight = "700"
         else:
-            # ยังไม่ถึง — เทา
-            bg = "transparent"
-            color = "var(--ink-text-muted, #888)"
-            border = "var(--ink-border, #ddd)"
+            bg, color = "var(--ink-surface)", "var(--ink-text-muted)"
+            border = "var(--ink-border)"
             num_html = str(n)
+            label_color = "var(--ink-text-muted)"
+            label_weight = "400"
 
-        circle = (
-            f"<div style='width:28px;height:28px;border-radius:50%;background:{bg};"
-            f"color:{color};border:2px solid {border};display:inline-flex;"
-            f"align-items:center;justify-content:center;font-weight:600;font-size:13px;'>"
-            f"{num_html}</div>"
-        )
-        text = (
-            f"<span style='margin-left:0.4rem;color:{color if i == active_idx or i <= done_until else 'var(--ink-text-muted, #888)'};"
-            f"font-size:13px;font-weight:{'600' if i == active_idx else '400'};'>"
-            f"{label}</span>"
-        )
-        pieces.append(
-            f"<div style='display:inline-flex;align-items:center;'>{circle}{text}</div>"
-        )
-        if i < len(_STEP_LABELS) - 1:
-            # connector
-            connector_color = (
-                "var(--ink-success, #16a34a)" if i < done_until
-                else "var(--ink-border, #ddd)"
+        # connector ทางซ้าย (ไม่ทับ label เพราะอยู่บนระดับ circle อย่างเดียว)
+        if i > 0:
+            cn_done = (i - 1) < done_until or i <= done_until
+            cn_color = ("var(--ink-success)" if cn_done
+                        else "var(--ink-border)")
+            connector = (
+                f'<div style="position:absolute;left:-50%;right:50%;top:18px;'
+                f'height:3px;background:{cn_color};z-index:0;"></div>'
             )
-            pieces.append(
-                f"<div style='flex:1;height:2px;background:{connector_color};"
-                f"margin:0 0.6rem;min-width:20px;'></div>"
-            )
+        else:
+            connector = ''
+
+        cell = (
+            f'<div style="position:relative;text-align:center;flex:1;">'
+            f'{connector}'
+            f'<div style="position:relative;z-index:1;display:inline-flex;'
+            f'width:36px;height:36px;border-radius:50%;background:{bg};'
+            f'color:{color};border:2px solid {border};'
+            f'align-items:center;justify-content:center;font-weight:700;'
+            f'font-size:15px;box-shadow:var(--ink-shadow-sm);"'
+            f'>{num_html}</div>'
+            f'<div style="margin-top:0.4rem;font-size:0.82rem;'
+            f'font-weight:{label_weight};color:{label_color};'
+            f'line-height:1.25;">{label}</div>'
+            f'</div>'
+        )
+        cells.append(cell)
 
     html = (
-        "<div style='display:flex;align-items:center;padding:0.75rem 1rem;"
-        "background:var(--ink-surface-2, #f8f8f8);border-radius:var(--ink-radius-md, 8px);"
-        "margin-bottom:1rem;'>"
-        + "".join(pieces)
-        + "</div>"
+        '<div style="display:flex;align-items:flex-start;padding:0.9rem 0.6rem 0.6rem;'
+        'background:var(--ink-surface-2);border:1px solid var(--ink-border-soft);'
+        'border-radius:var(--ink-radius-md);margin-bottom:1rem;">'
+        + ''.join(cells)
+        + '</div>'
     )
     st.markdown(html, unsafe_allow_html=True)
 

@@ -672,6 +672,42 @@ def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
     )
 
 
+def step_header(step_num: int, total: int, title: str, description: Optional[str] = None) -> None:
+    """แสดง header ของขั้น (STEP N/M) — ใช้ทุก tab เพื่อ workflow consistency
+
+    Psychology: เลขลำดับลด cognitive load — user รู้ว่าอยู่ตรงไหน + เหลืออีกกี่ขั้น
+    """
+    desc_html = (
+        f'<div style="margin-top:0.25rem;font-size:0.88rem;color:var(--ink-text-muted);">{description}</div>'
+        if description else ''
+    )
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:0.7rem;margin:1.25rem 0 0.6rem;">
+            <div style="display:inline-flex;width:32px;height:32px;border-radius:50%;
+                        background:var(--ink-orange);color:white;
+                        align-items:center;justify-content:center;
+                        font-weight:700;font-size:14px;flex-shrink:0;
+                        box-shadow:var(--ink-shadow-sm);">
+                {step_num}
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:1.05rem;font-weight:700;color:var(--ink-text);
+                            line-height:1.2;">
+                    {title}
+                    <span style="font-size:0.78rem;color:var(--ink-text-muted);
+                                 font-weight:400;margin-left:0.4rem;">
+                        ขั้นที่ {step_num} จาก {total}
+                    </span>
+                </div>
+                {desc_html}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 @contextmanager
 def section(title: str, description: Optional[str] = None, icon: str = ""):
     """กล่องส่วนหนึ่งของหน้า — ใช้แทน st.markdown('### ...')

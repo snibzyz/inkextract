@@ -337,19 +337,14 @@ def _process_and_report(scan, selected):
 # ============================================================
 
 def render() -> None:
-    """แสดง tab ตรวจต้นฉบับทั้งหมด"""
+    """แสดง tab ตรวจต้นฉบับทั้งหมด — STEP-based workflow"""
     ui.apply_manuscript_css()
 
-    with ui.section(
-    "ตรวจต้นฉบับ",
-        description=(
-        "สแกนไฟล์ .txt — ไฟล์เล็กผิดปกติจะถูกเน้นสีแดง "
-        "ติ๊กช่องสี่เหลี่ยม = เลือกลบ • คลิกชื่อ = พรีวิว • "
-        "ค่าตั้งต้นชี้ที่โฟลเดอร์ `Raw/` (ไฟล์ raw จีนต้นฉบับ) • "
-        "ผลลัพธ์ออกที่ `Output/manuscript/raw/`"
-        ),
-    ):
-        pass
+    # STEP 1 — เลือกโฟลเดอร์ + ตั้งเกณฑ์
+    ui.step_header(
+        1, 4, "เลือกโฟลเดอร์และตั้งเกณฑ์",
+        "เลือกโฟลเดอร์ที่มีไฟล์ .txt และกำหนดว่าไฟล์เล็กแค่ไหนถึงผิดปกติ",
+    )
 
     folder_default = st.session_state.get('manuscript_dir', str(paths.RAW_INPUT_DIR))
     folder_text, do_set, do_open, do_reload = _render_folder_bar(folder_default)
@@ -386,13 +381,23 @@ def render() -> None:
         ui.warning("ไม่พบไฟล์ .txt ในโฟลเดอร์นี้")
         return
 
-    # ===== Stats: HORIZONTAL row of cards =====
+    # STEP 2 — ดูสถิติ
+    ui.step_header(
+        2, 4, "ดูสถิติของไฟล์",
+        "ตรวจดูว่าไฟล์ไหนเล็กผิดปกติ (สีแดง) เทียบกับไฟล์อื่น",
+    )
     ui.stats_cards([
         ("จำนวนไฟล์ทั้งหมด", scan.total_files),
         ("เลขนำหน้า", f"{scan.detected_padding} หลัก"),
         ("ขนาดเฉลี่ย", ui.format_bytes(scan.average_size)),
         ("ไฟล์ขนาดเล็ก", scan.small_files_count),
     ])
+
+    # STEP 3 — เลือกไฟล์
+    ui.step_header(
+        3, 4, "เลือกไฟล์ที่จะลบ / เรียงเลขใหม่",
+        "ติ๊กช่องสี่เหลี่ยม = เลือกลบ · คลิกชื่อไฟล์ = พรีวิวเนื้อหา",
+    )
 
     selected = st.session_state.get('manuscript_selected', set())
     sorted_entries = _sorted_entries(scan)
@@ -405,5 +410,10 @@ def render() -> None:
     with right:
         _render_preview(scan, sorted_entries)
 
+    # STEP 4 — ประมวลผล (ปุ่มอยู่ใน _render_action_bar ด้านบน)
     if do_process:
+        ui.step_header(
+            4, 4, "ผลการประมวลผล",
+            "ไฟล์ที่เลือกถูกลบและไฟล์ที่เหลือเรียงเลขใหม่",
+        )
         _process_and_report(scan, selected)
