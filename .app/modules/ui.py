@@ -81,45 +81,114 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
 * + Streamlit's [data-theme="dark"] attribute (covers manual toggle)
 * ============================================================ */
 :root {{
-    /* radius scale — consistent across all components */
+    /* ── Radius scale ── */
     --ink-radius-sm: 6px;
     --ink-radius-md: 8px;
     --ink-radius-lg: 10px;
     --ink-radius-xl: 14px;
     --ink-radius-pill: 999px;
-    /* brand orange — same in both themes */
+
+    /* ── Font size scale (rem-based · 16px base) ── */
+    --ink-text-xs: 0.85rem;   /* 13.6px · caption · hint */
+    --ink-text-sm: 0.92rem;   /* 14.7px · secondary text */
+    --ink-text-base: 1rem;    /* 16px · body, input, button */
+    --ink-text-md: 1.05rem;   /* 16.8px · tab, emphasized */
+    --ink-text-lg: 1.15rem;   /* 18.4px · sub-header */
+    --ink-text-xl: 1.4rem;    /* 22.4px · section header */
+    --ink-text-2xl: 1.75rem;  /* 28px · page title */
+    --ink-text-3xl: 2.2rem;   /* 35.2px · hero */
+
+    /* ── Control height scale (สม่ำเสมอทั้งระบบ) ── */
+    --ink-h-sm: 36px;
+    --ink-h-md: 46px;   /* default input/button */
+    --ink-h-lg: 52px;   /* tab, dropdown row */
+
+    /* ── Brand orange (both themes) ── */
     --ink-orange: {ORANGE_PRIMARY};
     --ink-orange-dark: {ORANGE_DARK};
     --ink-orange-light: {ORANGE_LIGHT};
 
-    /* surfaces */
+    /* ── Light theme (default) ── */
     --ink-surface: #FFFFFF;
     --ink-surface-2: #FAFAFA;
     --ink-surface-tint: #FFF8E1;
     --ink-surface-tint-strong: #FFF3E0;
     --ink-surface-input: #FFFFFF;
 
-    /* text */
     --ink-text: #212121;
     --ink-text-strong: #3E2723;
     --ink-text-muted: #6D4C41;
     --ink-text-faint: #9E9E9E;
 
-    /* borders */
     --ink-border: #E0E0E0;
     --ink-border-soft: #EEEEEE;
     --ink-border-orange: #FFB74D;
 
-    /* status */
     --ink-success: #2E7D32;
     --ink-success-bg: #E8F5E9;
     --ink-warn: #C62828;
     --ink-warn-bg: #FFEBEE;
 
-    /* shadows */
     --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
     --ink-shadow-md: 0 2px 8px rgba(0,0,0,0.06);
     --ink-shadow-lg: 0 8px 18px rgba(245,124,0,0.18);
+}}
+
+/* ── Dark theme tokens (shared by all dark selectors) ── */
+@media (prefers-color-scheme: dark) {{
+    :root {{
+        --ink-orange: #FFA726;
+        --ink-orange-dark: #FFB74D;
+        --ink-orange-light: #FFD180;
+        --ink-surface: #1E2129;
+        --ink-surface-2: #262730;
+        --ink-surface-tint: rgba(255,167,38,0.10);
+        --ink-surface-tint-strong: rgba(255,167,38,0.16);
+        --ink-surface-input: #2A2D36;
+        --ink-text: #FAFAFA;
+        --ink-text-strong: #FFFFFF;
+        --ink-text-muted: #C7B9B0;
+        --ink-text-faint: #8B8B8B;
+        --ink-border: #3D434B;
+        --ink-border-soft: #2E333B;
+        --ink-border-orange: #FFB74D;
+        --ink-success: #81C784;
+        --ink-success-bg: rgba(46,125,50,0.20);
+        --ink-warn: #EF9A9A;
+        --ink-warn-bg: rgba(198,40,40,0.20);
+        --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
+        --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
+        --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
+    }}
+}}
+
+/* ── Streamlit manual theme toggle — รองรับทุก attribute ที่ Streamlit ใช้ ── */
+html[data-theme="dark"],
+body[data-theme="dark"],
+.stApp[data-theme="dark"],
+[data-theme="dark"] {{
+    --ink-orange: #FFA726;
+    --ink-orange-dark: #FFB74D;
+    --ink-orange-light: #FFD180;
+    --ink-surface: #1E2129;
+    --ink-surface-2: #262730;
+    --ink-surface-tint: rgba(255,167,38,0.10);
+    --ink-surface-tint-strong: rgba(255,167,38,0.16);
+    --ink-surface-input: #2A2D36;
+    --ink-text: #FAFAFA;
+    --ink-text-strong: #FFFFFF;
+    --ink-text-muted: #C7B9B0;
+    --ink-text-faint: #8B8B8B;
+    --ink-border: #3D434B;
+    --ink-border-soft: #2E333B;
+    --ink-border-orange: #FFB74D;
+    --ink-success: #81C784;
+    --ink-success-bg: rgba(46,125,50,0.20);
+    --ink-warn: #EF9A9A;
+    --ink-warn-bg: rgba(198,40,40,0.20);
+    --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
+    --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
+    --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
 }}
 
 /* dark mode — auto via system preference */
@@ -153,37 +222,6 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
         --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
         --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
     }}
-}}
-
-/* dark mode — Streamlit manual toggle (data-theme attribute on body/html) */
-[data-theme="dark"] {{
-    --ink-orange: #FFA726;
-    --ink-orange-dark: #FFB74D;
-    --ink-orange-light: #FFD180;
-
-    --ink-surface: #1E2129;
-    --ink-surface-2: #262730;
-    --ink-surface-tint: rgba(255,167,38,0.10);
-    --ink-surface-tint-strong: rgba(255,167,38,0.16);
-    --ink-surface-input: #2A2D36;
-
-    --ink-text: #FAFAFA;
-    --ink-text-strong: #FFFFFF;
-    --ink-text-muted: #C7B9B0;
-    --ink-text-faint: #8B8B8B;
-
-    --ink-border: #3D434B;
-    --ink-border-soft: #2E333B;
-    --ink-border-orange: #FFB74D;
-
-    --ink-success: #81C784;
-    --ink-success-bg: rgba(46,125,50,0.20);
-    --ink-warn: #EF9A9A;
-    --ink-warn-bg: rgba(198,40,40,0.20);
-
-    --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
-    --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
-    --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
 }}
 
 /* ============================================================
@@ -280,61 +318,57 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
 }}
 
 /* ============================================================
- * Selectbox / Multiselect dropdown popup — รายการสูงขึ้น อ่านง่าย
+ * Selectbox / Multiselect dropdown — รายการสูงขึ้น อ่านง่าย
  *
- * Trick: Streamlit ใช้ baseweb virtual scroll ที่ position <li> ด้วย absolute
- * + height=40px คงที่ — ทำให้แก้ขนาดยาก ถ้าใส่ min-height ตรงๆ จะ overlap
+ * IMPORTANT: Streamlit/baseweb wraps <li role="option"> ใน <div role="listbox">
+ *            (NOT <ul>) — ดังนั้น selector ตรง `li[role="option"]` ถึงจะ match
  *
- * วิธีแก้: บังคับ position:relative + auto height + override top/left
- * → ทำลาย virtual scroll แต่ stacking ตามปกติ ใส่ขนาดเท่าไหร่ก็ได้
- *   (เหมาะกับ dropdown < 50 รายการ ซึ่งแอปนี้ใช้ทั้งหมด)
+ * Virtual scroll: <li> ใช้ position:absolute + inline height=40px
+ *                 ต้อง override ทั้ง position + top + height ผ่าน !important
  * ============================================================ */
-ul[role="listbox"] {{
-    height: auto !important;
-    max-height: 360px !important;
-    overflow-y: auto !important;
+[role="listbox"] {{
     padding: 0.3rem 0 !important;
 }}
-ul[role="listbox"] li[role="option"] {{
+li[role="option"] {{
     position: relative !important;
     top: auto !important;
     left: auto !important;
     height: auto !important;
     min-height: 52px !important;
-    padding: 0.75rem 1rem !important;
+    padding: 0.85rem 1rem !important;
     font-size: 1rem !important;
     line-height: 1.45 !important;
     display: flex !important;
     align-items: center !important;
     cursor: pointer !important;
+    box-sizing: border-box !important;
 }}
-ul[role="listbox"] li[role="option"] > div,
-ul[role="listbox"] li[role="option"] > div > div {{
+li[role="option"] > div,
+li[role="option"] > div > div {{
     width: 100% !important;
     font-size: 1rem !important;
     line-height: 1.45 !important;
     padding: 0 !important;
 }}
-ul[role="listbox"] li[role="option"]:hover {{
+li[role="option"]:hover {{
     background: var(--ink-surface-tint, #fff7ed) !important;
 }}
-ul[role="listbox"] li[role="option"][aria-selected="true"] {{
-    background: var(--ink-orange, #f97316) !important;
+li[role="option"][aria-selected="true"] {{
+    background: var(--ink-orange) !important;
     color: white !important;
     font-weight: 600 !important;
 }}
-ul[role="listbox"] li[role="option"][aria-selected="true"] > div,
-ul[role="listbox"] li[role="option"][aria-selected="true"] > div > div {{
+li[role="option"][aria-selected="true"] > div,
+li[role="option"][aria-selected="true"] > div > div {{
     color: white !important;
 }}
-/* ขยายความกว้าง dropdown popup เพื่อไม่ตัดข้อความ */
-div[data-baseweb="popover"] ul[role="listbox"] {{
-    min-width: 320px !important;
-}}
-/* ขยาย container ที่ครอบ ul (baseweb ใส่ height คงที่ = items*40px) */
-div[data-baseweb="popover"] > div[data-baseweb="menu"] > div {{
+/* container ที่ครอบ list — ปล่อย height auto + max-height + scroll */
+div[data-baseweb="popover"] [role="listbox"],
+div[data-baseweb="popover"] > div {{
     height: auto !important;
-    max-height: 360px !important;
+    max-height: 400px !important;
+    overflow-y: auto !important;
+    min-width: 320px !important;
 }}
 /* Selectbox input field — match กับ dropdown */
 .stSelectbox div[data-baseweb="select"] > div {{
