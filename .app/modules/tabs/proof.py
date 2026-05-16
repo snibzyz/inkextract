@@ -675,10 +675,27 @@ def render(proofreader, file_processor) -> None:
 
         st.markdown("---")
 
-        # ── Settings panel (chunk_lines / destination) — แสดงค้างไว้เสมอ
+        # ── Settings panel (merge_mode / chunk_lines / destination) — แสดงค้างไว้เสมอ
         normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
         saved_chunk_lines = int(normal_prefs.get("chunk_lines", 500) or 500)
         saved_dest = normal_prefs.get("fix_destination", str(paths.FINISH_DIR))
+        saved_merge_mode = bool(normal_prefs.get("merge_mode", True))
+
+        # ── Merge mode toggle — กันชื่อไฟล์เพี้ยน ──
+        normal_merge_mode = st.toggle(
+            ":material/merge_type: รวมก่อนตรวจ (กันชื่อไฟล์เพี้ยน — แนะนำ)",
+            value=saved_merge_mode,
+            help="ON: รวมทุกไฟล์เป็น 1 stream ใช้เลขบรรทัด global · export ออก 1 ไฟล์ master "
+                 "ไม่มี ## filename header · import match ด้วยเลขบรรทัดอย่างเดียว · "
+                 "fix เขียนกลับเป็นไฟล์เดิม\n\n"
+                 "OFF: per-file แบบเดิม (มี ## filename header ต่อไฟล์) — "
+                 "เสี่ยงชื่อไฟล์เพี้ยนถ้า user/AI แก้บรรทัด header",
+            key="normal_merge_mode_toggle",
+        )
+        if normal_merge_mode != saved_merge_mode:
+            preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                {**normal_prefs, "merge_mode": normal_merge_mode})
+            normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
 
         with st.expander("ตั้งค่าส่งออก / แก้ไขไฟล์", expanded=True):
             col_setting1, col_setting2 = st.columns(2)
@@ -791,7 +808,8 @@ def render(proofreader, file_processor) -> None:
                         target_path if target_path else proofreader.normal_mode_source,
                         normal_check_foreign,
                         normal_check_numbers,
-                        normal_check_english
+                        normal_check_english,
+                        merge_mode=normal_merge_mode,
                     )
                 st.toast("วิเคราะห์โหมดทั่วไปเสร็จสิ้น!")
 

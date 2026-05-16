@@ -63,6 +63,14 @@ class NovelProofreader:
         self.error_exporter = ErrorExporter()
         self.validator = SecurityValidator()
 
+        # ── โหมดรวมก่อนตรวจ (Merged scan mode) — กันชื่อไฟล์เพี้ยน ──
+        # เมื่อ True: analyze รวมทุกไฟล์เป็น stream เดียว ใช้ global line numbers
+        # export ออก 1 ไฟล์ master · import match ด้วยเลขบรรทัดอย่างเดียว · fix ใช้ mapping กลับ
+        self.normal_merge_mode: bool = False
+        # mapping[g-1] = (Path, local_line) — global line g (1-based) → original file + local line
+        self.normal_merge_mapping: List[Tuple[Path, int]] = []
+        self.normal_merge_source_dir: Optional[Path] = None
+
     # ── Dynamic path properties — resolve ต่อ project ปัจจุบันทุกครั้ง ──
     # อย่า snapshot เป็น attribute ตรงๆ เพราะตอนสลับ project ค่าจะค้าง
     # ทำให้ output ไปลง workspace เดิม (bug ที่ user เจอ)
@@ -966,9 +974,18 @@ class NovelProofreader:
             if total_groups > max_groups_to_show:
                 st.caption(f"... และอีก {total_groups - max_groups_to_show} กลุ่ม")
 
-    def analyze_normal_mode(self, input_directory: Path, check_foreign_languages: bool, 
-                          check_numbers: bool, check_english: bool):
-        """Analyze files in normal mode with improved performance"""
+    def analyze_normal_mode(self, input_directory: Path, check_foreign_languages: bool,
+                          check_numbers: bool, check_english: bool,
+                          merge_mode: bool = True):
+        """Analyze files in normal mode with improved performance.
+
+        Args:
+            input_directory: โฟลเดอร์ต้นทาง
+            check_foreign_languages / check_numbers / check_english: เงื่อนไขตรวจ
+            merge_mode: True = รวมทุกไฟล์เป็น stream เดียว ใช้ global line numbers
+                        (กันชื่อไฟล์เพี้ยน · default True)
+                        False = per-file numbering แบบเดิม (มี ## filename header)
+        """
         # 🔄 Auto-reload exclude patterns ถ้าไฟล์เปลี่ยน
         if regex_patterns.check_and_reload():
             st.info(f"🔄 ตรวจพบการเปลี่ยนแปลง exclude.txt โหลด patterns ใหม่แล้ว ({len(regex_patterns.ignore_patterns)} patterns)")
@@ -1011,42 +1028,70 @@ class NovelProofreader:
             st.success(f"✅ พบไฟล์ทั้งหมด {len(txt_files)} ไฟล์ กำลังประมวลผลทั้งหมด...")
         
         self.normal_mode_source = input_directory
-        
+        self.normal_merge_mode = merge_mode
+        self.normal_merge_source_dir = input_directory if merge_mode else None
+        self.normal_merge_mapping = []
+
         # Progress tracking
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         total_files = len(txt_files)
         processed_files = 0
         total_lines_scanned = 0
         total_foreign = 0
         total_english = 0
         total_numbers = 0
-        
-        logger.info(f"Starting normal mode analysis of {total_files} files")
+
+        logger.info(f"Starting normal mode analysis of {total_files} files (merge_mode={merge_mode})")
+
+        # ── Pre-build line mapping ถ้า merge_mode ──
+        # mapping[i] = (file_path, local_line) ของ global line (i+1)
+        file_offsets: Dict[Path, int] = {}  # file → starting global line offset (0-based)
+        if merge_mode:
+            cur_offset = 0
+            for fp in txt_files:
+                file_offsets[fp] = cur_offset
+                try:
+                    with open(fp, 'r', encoding='utf-8') as f:
+                        n_lines = sum(1 for _ in f)
+                except Exception:
+                    n_lines = 0
+                for local_ln in range(1, n_lines + 1):
+                    self.normal_merge_mapping.append((fp, local_ln))
+                cur_offset += n_lines
 
         # ⚡ ประมวลผลขนานเหมือน AB mode
         from concurrent.futures import ThreadPoolExecutor
 
         def _scan(file_path: Path):
-            return self.file_analyzer.analyze_file_content(
+            errs = self.file_analyzer.analyze_file_content(
                 file_path, check_foreign_languages, check_english, check_numbers, skip_ab_markers=False
             )
+            return file_path, errs
 
         max_workers = min(16, max(4, total_files))
         update_every = max(1, total_files // 50)
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            for file_errors in pool.map(_scan, txt_files):
+            for file_path, file_errors in pool.map(_scan, txt_files):
                 processed_files += 1
                 total_lines_scanned += len(file_errors)
+
+                # ปรับ line_number เป็น global ถ้า merge_mode
+                offset = file_offsets.get(file_path, 0) if merge_mode else 0
 
                 for error in file_errors:
                     flags = error.get('flags', {})
                     total_foreign += int(flags.get('foreign', False) and check_foreign_languages)
                     total_english += int(flags.get('english', False) and check_english)
                     total_numbers += int(flags.get('numbers', False) and check_numbers)
-                    # เตรียม slot สำหรับ correction — ถูกเติมตอน import_normal_mode_corrections()
+                    # เก็บ local line ก่อนแก้เป็น global
+                    if merge_mode:
+                        local_ln = int(error['line_number'])
+                        error['_local_line_number'] = local_ln
+                        error['line_number'] = offset + local_ln
+                    # เตรียม slot สำหรับ correction
                     error.setdefault('corrected_content', error.get('line_content', ''))
 
                 self.normal_mode_errors.extend(file_errors)
@@ -1057,6 +1102,10 @@ class NovelProofreader:
 
                 if processed_files % app_config.progress_update_interval == 0:
                     logger.info(f"Processed {processed_files}/{total_files} files")
+
+        # เรียง errors ตาม global line number ใน merge mode (เพราะ thread pool ทำงานแบบ unordered)
+        if merge_mode:
+            self.normal_mode_errors.sort(key=lambda e: int(e['line_number']))
         
         # Update statistics
         self.normal_mode_stats = {
@@ -1101,16 +1150,35 @@ class NovelProofreader:
     def _render_normal_mode_blocks(self) -> List[str]:
         """Render normal_mode_errors เป็น list ของบรรทัด (string) พร้อมเขียนลงไฟล์.
 
-        รูปแบบที่ออก:
-            ## filename.txt
-            123|
-            [เดิม] ข้อความเดิม
-            [แก้] ข้อความเดิม (ถ้ายังไม่ได้แก้) หรือข้อความใหม่ (ถ้าแก้แล้ว)
-            <blank>
+        2 รูปแบบ:
+        - merge_mode = True (default): 1 header ## merged.txt ใช้ global line numbers
+          ทุก entry มี comment 'from: filename:local' กำกับ context
+        - merge_mode = False: per-file headers แบบเดิม (## file_1.txt, ## file_2.txt)
 
         ผู้ใช้แก้ที่บรรทัด `[แก้]` เท่านั้น แล้วเอามา import กลับ.
         """
         out: List[str] = []
+
+        if self.normal_merge_mode:
+            # ── Merge mode: 1 header + global line numbers ──
+            out.append("## merged.txt")
+            for error in self.normal_mode_errors:
+                original = error.get('line_content', '').rstrip('\n')
+                corrected = error.get('corrected_content', original).rstrip('\n')
+                categories = ', '.join(error.get('categories', []))
+                if categories:
+                    out.append(f"# พบ: {categories}")
+                # comment กำกับ origin file (ห้ามแก้ — แค่ context)
+                orig_file = Path(error['file_path']).name
+                local_ln = error.get('_local_line_number', '?')
+                out.append(f"# จาก: {orig_file}:{local_ln}")
+                out.append(f"{error['line_number']}|")
+                out.append(f"[เดิม] {original}")
+                out.append(f"[แก้] {corrected}")
+                out.append("")
+            return out
+
+        # ── Per-file mode (เดิม) ──
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         for error in self.normal_mode_errors:
             grouped.setdefault(error['file_path'], []).append(error)
@@ -1348,12 +1416,17 @@ class NovelProofreader:
             f"({len(part_files)} ไฟล์ · match ด้วยหมายเลขบรรทัดแม่นๆ)"
         )
 
-        # Build exact-match index: (norm_filename, line_number) → error
+        # Build exact-match index
+        # merge_mode: ใช้ line_number อย่างเดียวเป็น key (กันชื่อไฟล์เพี้ยน)
+        # ปกติ: (norm_filename, line_number) → error
+        merge_mode_active = bool(self.normal_merge_mode)
         index: Dict[Tuple[str, int], Dict[str, Any]] = {}
+        index_by_line: Dict[int, Dict[str, Any]] = {}
         for error in self.normal_mode_errors:
             fname_norm = self._normalize_import_filename(Path(error['file_path']).name)
             key = (fname_norm, int(error['line_number']))
             index[key] = error
+            index_by_line[int(error['line_number'])] = error
 
         # Parse content
         content_parts: List[str] = []
@@ -1423,8 +1496,11 @@ class NovelProofreader:
                 i = j
                 continue
 
-            # EXACT match เท่านั้น
-            target = index.get((current_file, line_number))
+            # EXACT match: merge_mode ใช้เลขบรรทัดอย่างเดียว · ปกติใช้ (filename, line)
+            if merge_mode_active:
+                target = index_by_line.get(line_number)
+            else:
+                target = index.get((current_file, line_number))
             if target is not None:
                 # Verify [เดิม] ตรงกับ line_content (sanity check)
                 if orig_line is not None:
@@ -1552,7 +1628,12 @@ class NovelProofreader:
 
             replaced_in_file = 0
             for error in errors:
-                line_idx = int(error['line_number']) - 1
+                # merge_mode: line_number = global → ใช้ _local_line_number
+                # ปกติ: line_number = local อยู่แล้ว
+                if self.normal_merge_mode and '_local_line_number' in error:
+                    line_idx = int(error['_local_line_number']) - 1
+                else:
+                    line_idx = int(error['line_number']) - 1
                 if line_idx < 0 or line_idx >= len(lines):
                     continue
                 original = error.get('line_content', '').rstrip('\n')
