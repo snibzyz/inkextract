@@ -342,6 +342,83 @@ def apply_staged() -> int:
 
 
 # ============================================================
+# CLI helper: check + download + stage (used by Start.bat)
+# ============================================================
+def cli_check_and_download(timeout: float = 5.0, quiet: bool = False) -> int:
+    """Poll GitHub → download newer release → stage for next apply.
+
+    Designed to run from Start.bat BEFORE Streamlit launches. Prints
+    progress to stdout so the cmd window shows what's happening. On any
+    network failure, returns 0 (silent skip) so the app still launches.
+
+    Returns:
+        0 = up to date OR downloaded successfully OR no network (graceful)
+        1 = download started but failed mid-way
+    """
+    if not requests or not pkg_version:
+        if not quiet:
+            print("[updater] 'requests'/'packaging' not installed — skip update check.")
+        return 0
+
+    if not quiet:
+        print(f"[updater] Checking for updates (current: {read_version()})...")
+
+    try:
+        release = check_for_update(timeout=timeout)
+    except Exception as e:
+        if not quiet:
+            print(f"[updater] Check failed ({e}) — skip.")
+        return 0
+
+    if not release:
+        if not quiet:
+            print("[updater] Already up to date.")
+        return 0
+
+    # Already staged from a previous run? Skip re-download.
+    if READY_FLAG.exists():
+        if not quiet:
+            print(f"[updater] Update already staged ({READY_FLAG.read_text(encoding='utf-8').strip()}) — will apply.")
+        return 0
+
+    size_mb = (release.get("size") or 0) / 1024 / 1024
+    size_label = f" (~{size_mb:.0f} MB)" if size_mb > 0.5 else ""
+    if not quiet:
+        print(f"[updater] New version available: {release.get('current')} -> {release.get('latest')}{size_label}")
+        print(f"[updater] Downloading... (kind={release.get('kind', '?')})")
+
+    last_pct = [-1]
+
+    def cb(frac: float, msg: str) -> None:
+        if quiet:
+            return
+        pct = int(frac * 100)
+        if pct != last_pct[0]:
+            last_pct[0] = pct
+            short_msg = (msg or "")[:50]
+            print(f"\r[updater] {pct:3d}%  {short_msg:<50}", end="", flush=True)
+
+    try:
+        result = download_and_stage(release, on_progress=cb)
+    except Exception as e:
+        if not quiet:
+            print(f"\n[updater] Download failed: {e}")
+        return 1
+
+    if not quiet:
+        print()  # newline after progress bar
+
+    if result.get("ok"):
+        if not quiet:
+            print(f"[updater] Downloaded and staged — will apply now.")
+        return 0
+    else:
+        if not quiet:
+            print(f"[updater] Download failed: {result.get('error', 'unknown')}")
+        return 1
+
+
+# ============================================================
 # CLI
 # ============================================================
 def main(argv=None) -> int:
@@ -350,10 +427,20 @@ def main(argv=None) -> int:
                    help="Apply a previously-staged update. Used by launchers.")
     p.add_argument("--check", action="store_true",
                    help="Just check for an update and print the result.")
+    p.add_argument("--check-and-download", action="store_true",
+                   help="Poll GitHub + download + stage if new release exists. "
+                        "Used by Start.bat before launching Streamlit.")
+    p.add_argument("--quiet", action="store_true",
+                   help="Suppress non-error output (for --check-and-download).")
+    p.add_argument("--timeout", type=float, default=5.0,
+                   help="HTTP timeout in seconds (default 5).")
     args = p.parse_args(argv)
 
     if args.apply_staged:
         return apply_staged()
+
+    if args.check_and_download:
+        return cli_check_and_download(timeout=args.timeout, quiet=args.quiet)
 
     if args.check:
         info = check_for_update()

@@ -21,6 +21,30 @@ fi
 export PYTHONIOENCODING=utf-8
 export PYTHONUTF8=1
 
+# Detect Python EARLY so we can call updater before apply
+PY=""
+if [ -x "python/bin/python3" ]; then
+    PY="python/bin/python3"
+elif [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+fi
+
+# ============================================================
+# Loop body — re-enters from bottom if Streamlit triggers a restart
+# (sets .restart_pending flag before exiting)
+# ============================================================
+while true; do
+
+# ============================================================
+# Step 0: Poll GitHub for new release + download silently
+# (Skipped if no Python or no internet — graceful)
+# ============================================================
+if [ -n "$PY" ]; then
+    echo "Checking for updates..."
+    "$PY" ".app/updater.py" --check-and-download --timeout 4 || true
+    echo
+fi
+
 # ============================================================
 # Apply pending update FIRST, with native rsync.
 #
@@ -85,13 +109,7 @@ if [ -f ".update_pending/READY" ]; then
     echo
 fi
 
-PY=""
-if [ -x "python/bin/python3" ]; then
-    PY="python/bin/python3"
-elif [ -x ".venv/bin/python" ]; then
-    PY=".venv/bin/python"
-fi
-
+# Python detection already done at top — just verify it's still set
 if [ -z "$PY" ]; then
     echo
     echo "[X] Not set up yet."
@@ -138,11 +156,29 @@ echo "Install root: $SCRIPT_DIR"
 echo "============================================================"
 echo
 
+set +e
 "$PY" -m streamlit run ".app/app.py" --server.port "$STREAMLIT_PORT"
-
 ec=$?
-if [ $ec -ne 0 ]; then
+set -e
+
+# ============================================================
+# Auto-restart support: if Streamlit's update banner triggered
+# a restart (writes .restart_pending flag before os._exit), loop
+# back to apply the staged update and relaunch.
+# ============================================================
+if [ -f ".restart_pending" ]; then
     echo
-    echo "App exited with an error (code $ec)."
+    echo "=== Restart requested by update — applying and relaunching ==="
+    rm -f ".restart_pending"
+    sleep 2
+    continue
+fi
+break
+
+done
+
+if [ "${ec:-0}" -ne 0 ]; then
+    echo
+    echo "App exited with an error (code ${ec})."
     read -n 1 -s -r -p "Press any key to close..."
 fi

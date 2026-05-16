@@ -15,6 +15,30 @@ chcp 65001 >nul 2>&1
 set PYTHONIOENCODING=utf-8
 set PYTHONUTF8=1
 
+REM Detect Python EARLY so we can call updater before apply
+set "PY="
+if exist "python\python.exe" (
+    set "PY=python\python.exe"
+) else if exist ".venv\Scripts\python.exe" (
+    set "PY=.venv\Scripts\python.exe"
+)
+
+REM ============================================================
+REM Loop entrypoint — re-enters here if Streamlit triggers a restart
+REM (sets .restart_pending flag before exiting)
+REM ============================================================
+:main_loop
+
+REM ============================================================
+REM Step 0: Poll GitHub for new release + download silently
+REM (Skipped if no Python or no internet — graceful)
+REM ============================================================
+if not "%PY%"=="" (
+    echo Checking for updates...
+    "%PY%" ".app\updater.py" --check-and-download --timeout 4
+    echo.
+)
+
 REM ============================================================
 REM Apply pending update FIRST, with native robocopy.
 REM
@@ -77,13 +101,7 @@ if exist ".update_pending\READY" (
     echo.
 )
 
-set "PY="
-if exist "python\python.exe" (
-    set "PY=python\python.exe"
-) else if exist ".venv\Scripts\python.exe" (
-    set "PY=.venv\Scripts\python.exe"
-)
-
+REM Python detection already done at top — just verify it's still set
 if "%PY%"=="" (
     echo.
     echo [X] Not set up yet.
@@ -125,8 +143,22 @@ echo ============================================================
 echo.
 
 "%PY%" -m streamlit run ".app\app.py" --server.port %STREAMLIT_PORT%
+set "EXIT_CODE=!ERRORLEVEL!"
 
-if errorlevel 1 (
+REM ============================================================
+REM Auto-restart support: if Streamlit's update banner triggered
+REM a restart (writes .restart_pending flag before os._exit), loop
+REM back to apply the staged update and relaunch.
+REM ============================================================
+if exist ".restart_pending" (
+    echo.
+    echo === Restart requested by update — applying and relaunching ===
+    del /q ".restart_pending" 2>nul
+    timeout /t 2 /nobreak >nul
+    goto :main_loop
+)
+
+if !EXIT_CODE! NEQ 0 (
     echo.
     echo App exited with an error. See the messages above.
     pause
