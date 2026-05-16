@@ -1,0 +1,16 @@
+# INKEXTRACT — Streamlit theme config
+# Single source of truth ของสี primary (amber) — ตรงกับ ui.py ORANGE_PRIMARY
+# และ INKREALM brand color
+[theme]
+primaryColor = "#F59E0B"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FAFAFA"
+textColor = "#212121"
+font = "sans serif"
+
+[server]
+runOnSave = false
+headless = true
+
+[browser]
+gatherUsageStats = false
