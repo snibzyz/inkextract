@@ -1010,6 +1010,8 @@ class NovelProofreader:
                     total_foreign += int(flags.get('foreign', False) and check_foreign_languages)
                     total_english += int(flags.get('english', False) and check_english)
                     total_numbers += int(flags.get('numbers', False) and check_numbers)
+                    # เตรียม slot สำหรับ correction — ถูกเติมตอน import_normal_mode_corrections()
+                    error.setdefault('corrected_content', error.get('line_content', ''))
 
                 self.normal_mode_errors.extend(file_errors)
 
@@ -1060,44 +1062,471 @@ class NovelProofreader:
             🎉 เยี่ยมมาก! เนื้อหาปลอดจากภาษาต่างประเทศและตัวเลขตามที่กำหนด
             """)
 
-    def export_normal_mode_errors(self):
-        """ส่งออกข้อผิดพลาดจากโหมดทั่วไปเป็นไฟล์ normal_mode_errors.txt"""
+    def _render_normal_mode_blocks(self) -> List[str]:
+        """Render normal_mode_errors เป็น list ของบรรทัด (string) พร้อมเขียนลงไฟล์.
+
+        รูปแบบที่ออก:
+            ## filename.txt
+            123|
+            [เดิม] ข้อความเดิม
+            [แก้] ข้อความเดิม (ถ้ายังไม่ได้แก้) หรือข้อความใหม่ (ถ้าแก้แล้ว)
+            <blank>
+
+        ผู้ใช้แก้ที่บรรทัด `[แก้]` เท่านั้น แล้วเอามา import กลับ.
+        """
+        out: List[str] = []
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for error in self.normal_mode_errors:
+            grouped.setdefault(error['file_path'], []).append(error)
+
+        for file_path_str, errors in grouped.items():
+            file_name = Path(file_path_str).name
+            out.append(f"## {file_name}")
+            for error in errors:
+                original = error.get('line_content', '').rstrip('\n')
+                corrected = error.get('corrected_content', original).rstrip('\n')
+                categories = ', '.join(error.get('categories', []))
+                if categories:
+                    out.append(f"# พบ: {categories}")
+                out.append(f"{error['line_number']}|")
+                out.append(f"[เดิม] {original}")
+                out.append(f"[แก้] {corrected}")
+                out.append("")
+        return out
+
+    def export_normal_mode_errors(self, chunk_lines: int = 0):
+        """ส่งออกข้อผิดพลาดจากโหมดทั่วไป — รูปแบบ editable พร้อม import กลับได้.
+
+        เขียน 2 ระดับเสมอ:
+          1. Output/normal_mode_errors.txt (master) — ทุก entry รวมกัน
+          2. Import/normal_mode_import.txt (สำเนา) — ให้ user แก้ในที่ได้
+
+        ถ้า `chunk_lines > 0` และเนื้อหายาวเกิน → split เป็น
+        normal_mode_errors_001.txt, _002.txt, ... โดยห้ามตัดกลาง entry
+        (entry = 4 บรรทัด: line_number|, [เดิม], [แก้], blank).
+
+        Args:
+            chunk_lines: เป้าหมายจำนวนบรรทัดต่อ chunk (0 = ไม่ split, มีแต่ master)
+        """
         if not self.normal_mode_errors:
             st.warning("⚠️ ไม่มีข้อมูลโหมดทั่วไปให้ส่งออก")
             return
 
         try:
-            with st.spinner("กำลังส่งออก normal_mode_errors.txt..."):
+            with st.spinner("กำลังสร้างไฟล์ normal_mode_errors.txt..."):
                 self.output_dir.mkdir(exist_ok=True)
-                export_path = self.output_dir / "normal_mode_errors.txt"
 
-                grouped_errors: Dict[str, List[Dict[str, Any]]] = {}
-                for error in self.normal_mode_errors:
-                    grouped_errors.setdefault(error['file_path'], []).append(error)
+                # ลบ part files เก่าก่อน (กัน mix old+new)
+                for old in self.output_dir.glob("normal_mode_errors_*.txt"):
+                    try:
+                        old.unlink()
+                    except Exception:
+                        pass
 
-                with open(export_path, 'w', encoding='utf-8') as f:
-                    f.write("# รายการบรรทัดที่ต้องตรวจสอบ (โหมดทั่วไป)\n")
-                    f.write("# รูปแบบ: line_number| ข้อความ [ประเภท]\n")
-                    f.write("# หมายเหตุ: ตรวจสอบและแก้ไขที่ไฟล์ต้นฉบับโดยตรง\n\n")
+                body_lines = self._render_normal_mode_blocks()
 
-                    for file_path_str, errors in grouped_errors.items():
-                        file_name = Path(file_path_str).name
-                        f.write(f"## {file_name}\n")
-                        f.write(f"### {file_path_str}\n")
-                        for error in errors:
-                            content = error['line_content'].strip()
-                            categories = ', '.join(error.get('categories', []))
-                            category_text = f" [{categories}]" if categories else ""
-                            f.write(f"{error['line_number']}| {content}{category_text}\n")
-                        f.write("\n")
+                # Header อธิบายวิธีทำงานครั้งเดียว — ผู้ใช้ / AI อ่านแล้วเข้าใจทันที
+                def _build_header(part_label: str = "") -> List[str]:
+                    return [
+                        f"# โหมดทั่วไป — รายการบรรทัดที่ต้องแก้{part_label}",
+                        "#",
+                        "# วิธีแก้:",
+                        "#   1. ดูบรรทัด [เดิม] ของแต่ละ entry — บรรทัดที่ระบบจับได้ว่ามีปัญหา",
+                        "#   2. เขียนผลที่แก้แล้วลงในบรรทัด [แก้] (แทนที่ข้อความเดิมทั้งบรรทัด)",
+                        "#   3. แปลคำต่างประเทศ/อักษรจีนเป็นภาษาไทยให้เหมาะกับบริบท",
+                        "#   4. คงไว้ตามเดิมได้: ชื่อคน · ชื่อสถานที่ · คำเฉพาะ · ตัวเลขจริง",
+                        "#",
+                        "# ห้ามแก้: บรรทัด `## filename` และบรรทัด `123|`",
+                        "#         ระบบใช้สองอย่างนี้จับคู่ตอน import กลับ — ถ้าผิด entry นั้นจะถูกข้าม",
+                        "#",
+                        "",
+                    ]
 
-                st.success("✅ ส่งออก normal_mode_errors.txt สำเร็จ!")
-                st.toast("✅ ส่งออก normal_mode_errors.txt สำเร็จ!", icon="📤")
-                st.info(f"📂 ไฟล์ถูกบันทึกที่ `{export_path}`")
+                master_header = _build_header()
+                master_path = self.output_dir / "normal_mode_errors.txt"
+                with open(master_path, 'w', encoding='utf-8') as f:
+                    f.write("\n".join(master_header))
+                    f.write("\n".join(body_lines))
+                    f.write("\n")
+
+                # สำเนาไว้ใน Import/ ให้ user แก้ในที่
+                import_fix_dir = paths.IMPORT_FIX_DIR
+                import_fix_dir.mkdir(parents=True, exist_ok=True)
+                import_copy = import_fix_dir / "normal_mode_import.txt"
+                with open(import_copy, 'w', encoding='utf-8') as f:
+                    f.write("\n".join(_build_header(" (สำเนาแก้ในที่)")))
+                    f.write("\n".join(body_lines))
+                    f.write("\n")
+
+                # Chunk split (optional)
+                total_parts = 1
+                if chunk_lines > 0:
+                    chunks = self._split_normal_mode_blocks(body_lines, chunk_lines)
+                    total_parts = len(chunks)
+                    if total_parts > 1:
+                        for idx, chunk in enumerate(chunks):
+                            part_name = f"normal_mode_errors_{idx + 1:03d}.txt"
+                            part_path = self.output_dir / part_name
+                            part_label = f" — ส่วนที่ {idx + 1}/{total_parts}"
+                            with open(part_path, 'w', encoding='utf-8') as f:
+                                f.write("\n".join(_build_header(part_label)))
+                                f.write("\n".join(chunk))
+                                f.write("\n")
+
+            if total_parts > 1:
+                st.success(
+                    f"Export สำเร็จ — ส่งออก {len(self.normal_mode_errors)} รายการ · "
+                    f"master + {total_parts} chunks (~{chunk_lines} บรรทัด/chunk)"
+                )
+                st.toast(f"Export master + {total_parts} chunks สำเร็จ", icon="📤")
+            else:
+                st.success(
+                    f"Export สำเร็จ — ส่งออก {len(self.normal_mode_errors)} รายการ "
+                    f"(master เดียว) · สำเนาอยู่ที่ Import/normal_mode_import.txt"
+                )
+                st.toast(f"Export สำเร็จ — {len(self.normal_mode_errors)} รายการ", icon="📤")
 
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาดในการส่งออก: {str(e)}")
             st.exception(e)
+
+    @staticmethod
+    def _split_normal_mode_blocks(body_lines: List[str], chunk_lines: int) -> List[List[str]]:
+        """แบ่ง body_lines เป็น chunks โดยห้ามตัดกลาง entry.
+
+        Entry = ## file header หรือ 4 บรรทัด (line_num|, [เดิม], [แก้], blank).
+        วิธีง่ายๆ: แบ่งระหว่าง entry boundaries — boundary = บรรทัดว่าง
+        หรือบรรทัดที่ขึ้นต้นด้วย "## ".
+
+        Args:
+            body_lines: list ของบรรทัด (ไม่รวม header)
+            chunk_lines: เป้าหมายจำนวนบรรทัดต่อ chunk
+
+        Returns:
+            list ของ chunks — แต่ละ chunk = list ของบรรทัด
+        """
+        if chunk_lines <= 0 or not body_lines:
+            return [body_lines]
+
+        # แบ่ง body เป็น "blocks" ก่อน (1 block = 1 entry หรือ 1 file header)
+        blocks: List[List[str]] = []
+        current: List[str] = []
+        for line in body_lines:
+            current.append(line)
+            # boundary = บรรทัดว่าง → จบ entry block
+            if line == "":
+                blocks.append(current)
+                current = []
+            elif line.startswith("## ") and len(current) > 1:
+                # file header กลาง stream → flush previous
+                blocks.append(current[:-1])
+                current = [line]
+        if current:
+            blocks.append(current)
+
+        # รวม blocks → chunks ทีละ chunk_lines บรรทัด
+        chunks: List[List[str]] = []
+        current_chunk: List[str] = []
+        current_count = 0
+        # เก็บ "header context" ของไฟล์ปัจจุบัน เพื่อ repeat ในทุก chunk
+        current_file_header: Optional[str] = None
+        for block in blocks:
+            # ถ้า block นี้คือ file header — อัพเดต context
+            for ln in block:
+                if ln.startswith("## "):
+                    current_file_header = ln
+                    break
+
+            if current_count + len(block) > chunk_lines and current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = []
+                current_count = 0
+                # Repeat file header ใน chunk ใหม่ ถ้า block ปัจจุบันไม่ใช่ header เอง
+                if current_file_header and not any(ln.startswith("## ") for ln in block):
+                    current_chunk.append(current_file_header)
+                    current_chunk.append("")
+                    current_count += 2
+            current_chunk.extend(block)
+            current_count += len(block)
+
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks if chunks else [body_lines]
+
+    def import_normal_mode_corrections(self) -> int:
+        """อ่านไฟล์ที่ user แก้กลับ → เติม corrected_content ลง normal_mode_errors.
+
+        Search priority:
+          1. Import/normal_mode_*.txt (user-supplied)
+          2. Output/normal_mode_*.txt (fallback)
+
+        **Match strategy: EXACT เท่านั้น** ด้วย (normalized filename, line_number).
+        โหมดนี้ไม่มี [A] เป็น anchor verify เหมือน AB mode → fuzzy ไม่ปลอดภัย
+        ต้อง match ตรงเป๊ะด้วยหมายเลขบรรทัด.
+
+        ถ้า [เดิม] ใน import file ไม่ตรงกับ line_content ใน memory → warn แต่ยังแทนที่
+        (เพราะ user ตั้งใจให้แก้ที่บรรทัดนั้น). ถ้าจับคู่ไม่ได้ → ข้ามและรายงาน.
+
+        Returns:
+            จำนวน entries ที่ถูก update ด้วย corrected_content
+        """
+        if not self.normal_mode_errors:
+            st.error(
+                "ไม่พบข้อมูลการวิเคราะห์ในหน่วยความจำ — "
+                "กด **วิเคราะห์โหมดทั่วไป** ก่อน 1 ครั้งให้ระบบรู้จัก target"
+            )
+            return 0
+
+        # หา part files
+        def _collect_from(directory: Path) -> List[Path]:
+            if not directory.exists():
+                return []
+            found = sorted(directory.glob("normal_mode_errors_*.txt"))
+            for fname in ("normal_mode_import.txt", "normal_mode_errors.txt"):
+                extra = directory / fname
+                if extra.exists() and extra not in found:
+                    found.append(extra)
+            return found
+
+        part_files: List[Path] = _collect_from(paths.IMPORT_FIX_DIR)
+        source_dir: Optional[Path] = paths.IMPORT_FIX_DIR if part_files else None
+        if not part_files:
+            part_files = _collect_from(self.output_dir)
+            if part_files:
+                source_dir = self.output_dir
+
+        if not part_files:
+            st.error(
+                "ไม่พบไฟล์ normal_mode_*.txt — ลองทั้ง `Import/` และ `Output/` แล้ว\n"
+                "วิธีแก้: กด **ส่งออกแก้กลับได้** ก่อน 1 ครั้ง "
+                "(จะสร้าง `Import/normal_mode_import.txt`) แล้วลองอีกครั้ง"
+            )
+            return 0
+
+        st.caption(
+            f"📂 อ่าน import จาก: `{source_dir.name if source_dir else '?'}/` "
+            f"({len(part_files)} ไฟล์ · match ด้วยหมายเลขบรรทัดแม่นๆ)"
+        )
+
+        # Build exact-match index: (norm_filename, line_number) → error
+        index: Dict[Tuple[str, int], Dict[str, Any]] = {}
+        for error in self.normal_mode_errors:
+            fname_norm = self._normalize_import_filename(Path(error['file_path']).name)
+            key = (fname_norm, int(error['line_number']))
+            index[key] = error
+
+        # Parse content
+        content_parts: List[str] = []
+        for pf in part_files:
+            try:
+                content_parts.append(pf.read_text('utf-8'))
+            except Exception as e:
+                st.warning(f"⚠ อ่าน {pf.name} ไม่ได้: {e}")
+        content = "\n".join(content_parts)
+        lines = content.split('\n')
+
+        updated = 0
+        verify_mismatched = 0  # [เดิม] ไม่ตรงกับ line_content (ยังแทนที่อยู่ — แค่เตือน)
+        not_matched = 0
+        mismatch_samples: List[str] = []
+        notfound_samples: List[str] = []
+        current_file = ""
+        i = 0
+        while i < len(lines):
+            stripped = lines[i].strip()
+            file_header = self._parse_import_file_header(stripped)
+            if file_header:
+                current_file = self._normalize_import_filename(file_header)
+                i += 1
+                continue
+            if not stripped or stripped.startswith('#'):
+                i += 1
+                continue
+
+            line_number = self._parse_import_line_number(stripped)
+            if line_number is None or not current_file:
+                i += 1
+                continue
+
+            # หา [เดิม] / [แก้] ใน 1-6 บรรทัดถัดไป
+            orig_line: Optional[str] = None
+            fixed_line: Optional[str] = None
+            j = i + 1
+            while j < len(lines) and (j - i) <= 6:
+                t = lines[j].strip()
+                if self._parse_import_file_header(t) or self._parse_import_line_number(t) is not None:
+                    break
+                if orig_line is None and t.startswith('[เดิม]'):
+                    orig_line = t[len('[เดิม]'):].lstrip()
+                elif fixed_line is None and t.startswith('[แก้]'):
+                    fixed_line = t[len('[แก้]'):].lstrip()
+                j += 1
+
+            if fixed_line is None:
+                i = j
+                continue
+
+            # EXACT match เท่านั้น
+            target = index.get((current_file, line_number))
+            if target is not None:
+                # Verify [เดิม] ตรงกับ line_content (sanity check)
+                if orig_line is not None:
+                    expected = self._normalize_import_text(target.get('line_content', ''))
+                    actual = self._normalize_import_text(orig_line)
+                    if expected and actual and expected != actual:
+                        verify_mismatched += 1
+                        if len(mismatch_samples) < 3:
+                            mismatch_samples.append(
+                                f"`{current_file}` บรรทัด {line_number}"
+                            )
+                target['corrected_content'] = fixed_line
+                updated += 1
+            else:
+                not_matched += 1
+                if len(notfound_samples) < 3:
+                    notfound_samples.append(f"`{current_file}` บรรทัด {line_number}")
+
+            i = j
+
+        # สรุปผล
+        if updated > 0:
+            msg = f"นำเข้าการแก้ไขสำเร็จ — อัพเดต {updated} รายการ"
+            if not_matched:
+                msg += f" · จับคู่ไม่ได้: {not_matched}"
+            st.success(msg)
+            st.toast(f"Import สำเร็จ {updated} รายการ", icon="📥")
+            if verify_mismatched:
+                st.warning(
+                    f"พบ {verify_mismatched} รายการที่ [เดิม] ไม่ตรงกับเนื้อหาในหน่วยความจำ "
+                    f"(แทนที่ตามหมายเลขบรรทัดอยู่ แต่อาจมาจากการแก้ผิดบรรทัด): "
+                    + ", ".join(mismatch_samples)
+                    + ("..." if verify_mismatched > len(mismatch_samples) else "")
+                )
+            if not_matched:
+                st.warning(
+                    f"จับคู่ไม่ได้ {not_matched} รายการ: "
+                    + ", ".join(notfound_samples)
+                    + ("..." if not_matched > len(notfound_samples) else "")
+                    + " — ตรวจชื่อไฟล์/หมายเลขบรรทัดให้ตรงกับตอนวิเคราะห์"
+                )
+        else:
+            st.warning(
+                f"ไม่มี entry ที่อัพเดตได้ (จับคู่ไม่ได้: {not_matched}) — "
+                "ตรวจชื่อไฟล์/หมายเลขบรรทัด หรือเช็คว่าบรรทัด [แก้] ไม่ถูกลบ"
+            )
+
+        return updated
+
+    def fix_normal_mode_files(
+        self,
+        destination_dir: Optional[Path] = None,
+        in_place: bool = False,
+    ) -> Dict[str, int]:
+        """เขียนไฟล์ที่แก้แล้ว — แทนที่บรรทัดที่มี corrected_content ในไฟล์ต้นทาง.
+
+        Args:
+            destination_dir: โฟลเดอร์ปลายทาง (ละเว้นถ้า in_place=True)
+            in_place: ถ้า True เขียนทับไฟล์ต้นทาง (ระวัง: destructive)
+
+        Returns:
+            dict สรุปจำนวน: {'files': N, 'lines_replaced': M, 'errors': E}
+        """
+        if not self.normal_mode_errors:
+            st.warning("ไม่มีข้อมูลให้แก้ — กดวิเคราะห์โหมดทั่วไป + นำเข้าการแก้ไข ก่อน")
+            return {'files': 0, 'lines_replaced': 0, 'errors': 0}
+
+        # Group by source file
+        errors_by_file: Dict[str, List[Dict[str, Any]]] = {}
+        for error in self.normal_mode_errors:
+            errors_by_file.setdefault(error['file_path'], []).append(error)
+
+        # Setup destination
+        if not in_place:
+            if destination_dir is None:
+                destination_dir = paths.FINISH_DIR
+            destination_dir = Path(destination_dir).expanduser()
+            destination_dir.mkdir(parents=True, exist_ok=True)
+
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        total_files = len(errors_by_file)
+        files_done = 0
+        lines_replaced_total = 0
+        files_with_changes = 0
+
+        for source_path_str, errors in errors_by_file.items():
+            files_done += 1
+            source_path = Path(source_path_str)
+            file_name = source_path.name
+
+            progress_bar.progress(files_done / total_files)
+            status_text.text(f"กำลังเขียน: {file_name} ({files_done}/{total_files})")
+
+            if not source_path.exists():
+                st.warning(f"⚠ ไฟล์ต้นทางหาย: `{source_path}` — ข้าม")
+                continue
+
+            try:
+                with open(source_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+            except Exception as e:
+                st.error(f"❌ อ่าน {file_name} ไม่ได้: {e}")
+                continue
+
+            replaced_in_file = 0
+            for error in errors:
+                line_idx = int(error['line_number']) - 1
+                if line_idx < 0 or line_idx >= len(lines):
+                    continue
+                original = error.get('line_content', '').rstrip('\n')
+                corrected = error.get('corrected_content', original)
+                if corrected == original:
+                    continue  # ยังไม่ได้แก้
+                # คง newline เดิม (อาจเป็น \n หรือ \r\n)
+                orig_raw = lines[line_idx]
+                newline = '\r\n' if orig_raw.endswith('\r\n') else '\n'
+                lines[line_idx] = corrected.rstrip('\r\n') + newline
+                replaced_in_file += 1
+
+            if replaced_in_file == 0:
+                continue  # ไม่มีการเปลี่ยน → ข้ามไฟล์นี้ ไม่เขียนทับ
+
+            # Write
+            if in_place:
+                dest_path = source_path
+            else:
+                dest_path = destination_dir / file_name
+            try:
+                with open(dest_path, 'w', encoding='utf-8') as f:
+                    f.writelines(lines)
+            except Exception as e:
+                st.error(f"❌ เขียน {dest_path} ไม่ได้: {e}")
+                continue
+
+            lines_replaced_total += replaced_in_file
+            files_with_changes += 1
+
+        progress_bar.progress(1.0)
+        status_text.text("เขียนไฟล์ที่แก้แล้วเสร็จสิ้น")
+
+        summary = {
+            'files': files_with_changes,
+            'lines_replaced': lines_replaced_total,
+            'errors': len(self.normal_mode_errors),
+        }
+
+        if files_with_changes > 0:
+            dest_label = "ไฟล์ต้นทาง (in-place)" if in_place else f"`{destination_dir}`"
+            st.success(
+                f"แก้ไขสำเร็จ — {files_with_changes} ไฟล์ · {lines_replaced_total} บรรทัด → {dest_label}"
+            )
+            st.toast(f"Fix สำเร็จ {files_with_changes} ไฟล์", icon="🛠️")
+        else:
+            st.info("ไม่มีบรรทัดที่ถูกแก้ (corrected_content ยังเท่ากับ line_content) — กดนำเข้าการแก้ไขก่อน")
+
+        return summary
 
     def build_fix_markdown(self, error_content: str) -> str:
         error_body = error_content.rstrip()

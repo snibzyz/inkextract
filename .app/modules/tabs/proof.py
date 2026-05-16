@@ -660,21 +660,101 @@ def render(proofreader, file_processor) -> None:
                     st.write(f" `{err['file_name']}` บรรทัด {err['line_number']}: {err['line_content']}{category_text}")
 
             st.markdown("---")
-            col_export1, col_export2 = st.columns(2)
+            st.markdown("####  ส่งออก / นำเข้า / แก้ไขกลับ")
+            st.caption(
+                "โหมดทั่วไปไม่มี [A] ให้ตรวจ — ระบบจับคู่ด้วย **ชื่อไฟล์ + เลขบรรทัด** ตรงเป๊ะเท่านั้น "
+                "(ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export)"
+            )
 
-            with col_export1:
+            normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+            saved_chunk_lines = int(normal_prefs.get("chunk_lines", 0) or 0)
+            saved_in_place = bool(normal_prefs.get("fix_in_place", False))
+            saved_dest = normal_prefs.get("fix_destination", str(paths.FINISH_DIR))
+
+            col_setting1, col_setting2 = st.columns(2)
+            with col_setting1:
+                chunk_lines = st.number_input(
+                    "แบ่ง chunk โดยจำนวนบรรทัด (~ ต่อไฟล์) — 0 = ไม่ split",
+                    min_value=0, max_value=5000, step=50, value=saved_chunk_lines,
+                    help="ค่า ~500 บรรทัด/file พอดี token AI · เขียน master เสมอ + ถ้าตั้ง > 0 "
+                         "จะแบ่งเป็น normal_mode_errors_001.txt, _002.txt, ...",
+                    key="normal_chunk_lines",
+                )
+                if int(chunk_lines) != saved_chunk_lines:
+                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                        {**normal_prefs, "chunk_lines": int(chunk_lines)})
+                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+
+            with col_setting2:
+                in_place = st.checkbox(
+                    "เขียนทับไฟล์ต้นทาง (in-place)",
+                    value=saved_in_place,
+                    help="ถ้าติ๊ก จะเขียนทับไฟล์เดิมในโฟลเดอร์ที่สแกน — ทำลายของเดิม แนะนำให้สำรองก่อน",
+                    key="normal_fix_in_place",
+                )
+                if in_place != saved_in_place:
+                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                        {**normal_prefs, "fix_in_place": in_place})
+                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+
+            if not in_place:
+                dest_input = st.text_input(
+                    "โฟลเดอร์ปลายทาง (เขียนไฟล์ที่แก้แล้ว):",
+                    value=saved_dest,
+                    help=f"default: `{paths.FINISH_DIR}` — เขียนไฟล์ชื่อเดียวกันไว้ที่นี่",
+                    key="normal_fix_destination",
+                )
+                if dest_input.strip() and dest_input != saved_dest:
+                    preferences_manager.set_setting("proofreading_settings", "normal_mode",
+                        {**normal_prefs, "fix_destination": dest_input.strip()})
+                    normal_prefs = preferences_manager.get_setting("proofreading_settings", "normal_mode", {})
+                destination_dir = Path(dest_input.strip()) if dest_input.strip() else paths.FINISH_DIR
+            else:
+                destination_dir = None
+                st.warning("โหมดเขียนทับ — ไฟล์ต้นทางจะถูกเปลี่ยน ต้นฉบับเดิมจะหาย!")
+
+            st.markdown("---")
+            col_act1, col_act2, col_act3, col_act4 = st.columns(4)
+
+            with col_act1:
+                if st.button(" **ส่งออกแก้กลับได้**", type="primary", width='stretch'):
+                    proofreader.export_normal_mode_errors(chunk_lines=int(chunk_lines))
+
+            with col_act2:
+                if st.button(" **นำเข้าการแก้ไข**", width='stretch'):
+                    proofreader.import_normal_mode_corrections()
+
+            with col_act3:
+                if st.button(" **แก้ไขไฟล์**", width='stretch'):
+                    proofreader.fix_normal_mode_files(
+                        destination_dir=destination_dir,
+                        in_place=in_place,
+                    )
+
+            with col_act4:
                 df_for_export = normal_df.copy()
                 st.download_button(
-                    label=" ดาวน์โหลดผล (CSV)",
+                    label=" ดาวน์โหลด CSV",
                     data=df_for_export.to_csv(index=False).encode('utf-8-sig'),
                     file_name="normal_mode_errors.csv",
                     mime="text/csv",
                     width='stretch'
                 )
 
-            with col_export2:
-                if st.button(" ส่งออก normal_mode_errors.txt", width='stretch'):
-                    proofreader.export_normal_mode_errors()
+            with st.expander("คำแนะนำขั้นตอน", expanded=False):
+                st.markdown(
+                    """
+                    1. **วิเคราะห์โหมดทั่วไป** — ระบบบันทึก (ไฟล์, เลขบรรทัด) ลงหน่วยความจำ
+                    2. **ส่งออกแก้กลับได้** — เขียน `Output/normal_mode_errors.txt` + `Import/normal_mode_import.txt`
+                       (รูปแบบ `[เดิม]` / `[แก้]` — ผู้ใช้แก้บรรทัด `[แก้]` เท่านั้น)
+                    3. แก้ในไฟล์ `Import/normal_mode_import.txt` หรือส่งให้ AI แก้แล้ววางกลับ `Import/`
+                    4. **นำเข้าการแก้ไข** — โปรแกรมจับคู่ด้วย (ชื่อไฟล์ + เลขบรรทัด) ตรงเป๊ะ
+                    5. **แก้ไขไฟล์** — เขียนบรรทัดที่แก้แล้วกลับเข้าไฟล์ต้นฉบับ (หรือเขียนไปยัง Finish/)
+
+                    **ข้อควรระวัง:** ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export
+                    เพราะระบบใช้บรรทัดเหล่านี้จับคู่ — ถ้าผิด ระบบจะข้าม entry นั้นและรายงาน
+                    """
+                )
         elif stats and stats.get('files', 0) > 0 and stats.get('errors', 0) == 0:
             st.success(" โหมดทั่วไป: ไม่พบภาษาต่างประเทศหรือเลขที่ตั้งใจให้ตรวจ")
 
