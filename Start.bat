@@ -76,15 +76,20 @@ if exist ".update_pending\READY" (
         echo [WARN] Update apply had errors ^(robocopy exit !RC!^) - continuing anyway.
     )
 
-    REM Bump VERSION file (strip leading 'v' if present)
-    set /p NEW_TAG=<".update_pending\READY"
-    if not "!NEW_TAG!"=="" (
-        set "NEW_TAG=!NEW_TAG:v=!"
-        > ".app\VERSION" echo !NEW_TAG!
+    REM Bump VERSION file via Python — cmd's delayed expansion in nested
+    REM if-blocks fails intermittently and writes literal "!NEW_TAG!" to
+    REM .app\VERSION. Python is reliable and already required for updater.
+    set "NEW_TAG="
+    if not "%PY%"=="" (
+        for /f "usebackq delims=" %%T in (`"%PY%" -c "import pathlib;r=pathlib.Path('.update_pending/READY');v=pathlib.Path('.app/VERSION');t=r.read_text('utf-8').strip().lstrip('v') if r.exists() else '';v.parent.mkdir(parents=True,exist_ok=True);v.write_text(t,'utf-8') if t else None;print(t)"`) do set "NEW_TAG=%%T"
     )
 
     rmdir /s /q ".update_pending" 2>nul
-    echo Update applied: !NEW_TAG!
+    if not "!NEW_TAG!"=="" (
+        echo Update applied: !NEW_TAG!
+    ) else (
+        echo Update applied.
+    )
 
     REM If we're a source-installed user (.venv mode) AND the update was
     REM source-only, refresh dependencies in case requirements.txt changed.
