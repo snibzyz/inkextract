@@ -13,6 +13,15 @@ projects/
 # Playwright visual audit output — regenerated โดย _audit_ui.py ทุกครั้ง
 _screenshots/
 
+# Reflex POC (อยู่ใน branch poc/reflex เท่านั้น — ไม่ commit ใน main)
+_poc_reflex/
+
+# Portable bundle (สร้างจากสคริปต์ build — ไม่ commit ของหนัก)
+bundle/
+python.tar.gz
+python-embed*.zip
+*.spec
+
 # ============================================================
 # Local environment / build artifacts
 # ============================================================
