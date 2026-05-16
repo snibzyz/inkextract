@@ -36,7 +36,7 @@ _GLOBAL_CSS = f"""
    Streamlit renders :material/<name>: as <span role="img" aria-label="<name> icon" ...>
    ดังนั้น :not([role="img"]) ที่ aria-label ลงท้ายด้วย " icon" → ข้าม */
 html body .stApp,
-html body .stApp *:not([role="img"]):not([data-testid="stIconMaterial"]):not([data-testid="stAlertDynamicIcon"]):not([class*="material-symbols"]):not([class*="material-icons"]):not(.micon):not(pre):not(code) {{
+html body .stApp *:not([role="img"]):not([data-testid$="Icon"]):not([data-testid*="Material"]):not([class*="material-symbols"]):not([class*="material-icons"]):not(.micon):not(pre):not(code) {{
     font-family: 'Sarabun', 'Tahoma', 'Microsoft YaHei', sans-serif !important;
 }}
 html body .stApp pre, html body .stApp code,
@@ -48,9 +48,8 @@ html body .stApp .ms-preview-wrap pre, html body .vc-result .file {{
    Streamlit: <span role="img" aria-label="<name> icon" style="font-family:'Material Symbols Rounded'">name</span>
    เราต้อง override font-family inline style → ใช้ !important + match by role/aria. */
 html body .stApp span[role="img"][aria-label$=" icon"],
-html body .stApp [data-testid="stIconMaterial"],
-html body .stApp [data-testid="stAlertDynamicIcon"],
-html body .stApp [data-testid="stMarkdownColoredText"],
+html body .stApp [data-testid$="Icon"],
+html body .stApp [data-testid*="Material"],
 html body .stApp [class*="material-symbols"],
 html body .stApp [class*="material-icons"],
 html body .stApp span.micon,
