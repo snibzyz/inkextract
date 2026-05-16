@@ -135,39 +135,18 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     --ink-shadow-lg: 0 8px 18px rgba(245,158,11,0.18);
 }}
 
-/* ── Dark theme tokens (shared by all dark selectors) — amber palette ── */
-@media (prefers-color-scheme: dark) {{
-    :root {{
-        --ink-orange: #FBBF24;             /* amber-400 — brighter for dark bg */
-        --ink-orange-dark: #F59E0B;        /* amber-500 — hover/active */
-        --ink-orange-light: #FCD34D;       /* amber-300 — accent */
-        --ink-surface: #1E2129;
-        --ink-surface-2: #262730;
-        --ink-surface-tint: rgba(251,191,36,0.10);
-        --ink-surface-tint-strong: rgba(251,191,36,0.18);
-        --ink-surface-input: #2A2D36;
-        --ink-text: #FAFAFA;
-        --ink-text-strong: #FFFFFF;
-        --ink-text-muted: #C7B9B0;
-        --ink-text-faint: #8B8B8B;
-        --ink-border: #3D434B;
-        --ink-border-soft: #2E333B;
-        --ink-border-orange: #FCD34D;
-        --ink-success: #81C784;
-        --ink-success-bg: rgba(46,125,50,0.20);
-        --ink-warn: #EF9A9A;
-        --ink-warn-bg: rgba(198,40,40,0.20);
-        --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
-        --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
-        --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
-    }}
-}}
-
-/* ── Streamlit manual theme toggle — รองรับทุก attribute ที่ Streamlit ใช้ ── */
+/* ── Dark theme tokens — apply เฉพาะเมื่อ Streamlit toggle dark
+ * **ห้ามใช้ @media (prefers-color-scheme: dark)** เพราะ Streamlit theme config
+ * ใน .streamlit/config.toml force light theme ไว้แล้ว → OS dark pref จะทำให้
+ * tokens dark แต่ Streamlit render bg ขาว → text หาย/อ่านไม่ออก
+ * Detect via: Streamlit class .stApp[data-theme=dark], html.dark, color-scheme
+ * ── */
+html.dark,
 html[data-theme="dark"],
 body[data-theme="dark"],
 .stApp[data-theme="dark"],
-[data-theme="dark"] {{
+[data-theme="dark"],
+html[style*="color-scheme: dark"] {{
     --ink-orange: #FBBF24;
     --ink-orange-dark: #F59E0B;
     --ink-orange-light: #FCD34D;
@@ -539,6 +518,119 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     border: 1px solid var(--ink-border-soft);
     max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
+
+/* ============================================================
+* Project tab — Active project hero card + project list rows
+* ============================================================ */
+.ink-active-card {{
+    background: linear-gradient(135deg,
+        var(--ink-surface-tint) 0%,
+        var(--ink-surface-tint-strong) 100%);
+    border: 2px solid var(--ink-orange);
+    border-radius: var(--ink-radius-lg);
+    padding: 1.1rem 1.3rem;
+    margin-bottom: 0.75rem;
+    box-shadow: var(--ink-shadow-md);
+}}
+.ink-active-card-label {{
+    display: flex; align-items: center; gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--ink-orange-dark);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 700;
+}}
+.ink-active-card-label .micon {{ font-size: 1.2em; }}
+.ink-active-card-name {{
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--ink-orange-dark);
+    line-height: 1.15;
+    margin-bottom: 0.55rem;
+}}
+.ink-active-card-path {{
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font-family: 'Consolas','Courier New',monospace;
+    font-size: 0.85rem;
+    color: var(--ink-text);
+    background: var(--ink-surface);
+    padding: 5px 12px;
+    border-radius: var(--ink-radius-md);
+    border: 1px solid var(--ink-border);
+    max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}}
+.ink-active-card-path .micon {{
+    font-size: 1em; color: var(--ink-orange-dark); flex-shrink: 0;
+}}
+.ink-active-card-meta {{
+    margin-top: 0.45rem;
+    font-size: 0.8rem;
+    color: var(--ink-text-muted);
+}}
+
+/* Project list rows */
+.ink-proj-row {{
+    background: var(--ink-surface);
+    border: 1px solid var(--ink-border);
+    border-radius: var(--ink-radius-md);
+    padding: 0.75rem 0.95rem;
+    display: flex; align-items: center; gap: 0.7rem;
+    transition: all 0.15s ease;
+}}
+.ink-proj-row:hover {{
+    border-color: var(--ink-orange-light);
+    background: var(--ink-surface-2);
+}}
+.ink-proj-row.active {{
+    background: var(--ink-surface-tint);
+    border: 2px solid var(--ink-orange);
+    box-shadow: var(--ink-shadow-sm);
+}}
+.ink-proj-icon {{
+    font-size: 1.4em;
+    color: var(--ink-text-muted);
+    flex-shrink: 0;
+}}
+.ink-proj-row.active .ink-proj-icon {{
+    color: var(--ink-orange);
+}}
+.ink-proj-text {{ flex: 1; min-width: 0; }}
+.ink-proj-name {{
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--ink-text-strong);
+    line-height: 1.2;
+}}
+.ink-proj-row.active .ink-proj-name {{
+    color: var(--ink-orange-dark);
+}}
+.ink-proj-path {{
+    font-family: 'Consolas','Courier New',monospace;
+    font-size: 0.78rem;
+    color: var(--ink-text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 2px;
+}}
+.ink-proj-sub {{
+    font-size: 0.74rem;
+    color: var(--ink-text-faint);
+    margin-top: 2px;
+}}
+.ink-proj-active-badge {{
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.55rem 0.8rem;
+    color: var(--ink-orange-dark);
+    font-weight: 700;
+    font-size: 0.85rem;
+    background: var(--ink-surface-tint);
+    border-radius: var(--ink-radius-md);
+    border: 1px solid var(--ink-border-orange);
+    width: 100%;
+    justify-content: center;
+}}
+.ink-proj-active-badge .micon {{ font-size: 1.1em; }}
 
 /* ============================================================
 * Section card

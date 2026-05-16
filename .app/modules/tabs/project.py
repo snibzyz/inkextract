@@ -169,48 +169,27 @@ def _open_folder_in_explorer(folder_path: Path) -> None:
 
 
 def _render_active_project_card(active) -> None:
-    """กล่องเด่นๆ บอกโปรเจกต์ที่ใช้งานอยู่ + quick actions
+    """กล่อง hero บอกโปรเจกต์ที่ใช้งานอยู่ + quick actions
 
     Psychology: F-pattern → eye เห็นชื่อโปรเจกต์ (top-left) → path → ปุ่ม action
-    การจัดวางใช้กล่องส้มทำให้เด่นจากพื้นหลัง คนรู้ทันทีว่า "อันนี้คือสิ่งที่กำลังทำอยู่"
+    Visual: gradient amber soft + border ส้มเด่น + shadow ทำให้ float เหนือพื้นหลัง
     """
     actual_path = str(active.root_path())
     tag = ("เริ่มต้น (ลบไม่ได้)" if active.is_default
-           else (f"สร้าง: {active.created_at}" if active.created_at else ""))
+           else (f"สร้างเมื่อ: {active.created_at}" if active.created_at else ""))
     st.markdown(
         f"""
-        <div style="background: linear-gradient(135deg,
-                        var(--ink-surface-tint) 0%,
-                        var(--ink-surface-tint-strong) 100%);
-                    border: 2px solid var(--ink-orange);
-                    border-radius: var(--ink-radius-lg);
-                    padding: 1rem 1.2rem;
-                    margin-bottom: 0.75rem;
-                    box-shadow: var(--ink-shadow-md);">
-            <div style="display:flex; align-items:center; gap:0.6rem;
-                        margin-bottom: 0.3rem;">
-                <span class="micon" style="font-size:1.4em;
-                      color: var(--ink-orange-dark);">folder_special</span>
-                <span style="font-size:0.85rem; color: var(--ink-text-muted);
-                             text-transform: uppercase; letter-spacing: 0.5px;
-                             font-weight: 600;">
-                    โปรเจกต์ที่ใช้งานอยู่
-                </span>
+        <div class="ink-active-card">
+            <div class="ink-active-card-label">
+                <span class="micon">folder_special</span>
+                <span>โปรเจกต์ที่ใช้งานอยู่</span>
             </div>
-            <div style="font-size: 1.35rem; font-weight: 700;
-                        color: var(--ink-orange-dark); line-height: 1.2;">
-                {active.name}
+            <div class="ink-active-card-name">{active.name}</div>
+            <div class="ink-active-card-path" title="{actual_path}">
+                <span class="micon">folder</span>
+                <span>{actual_path}</span>
             </div>
-            <div style="margin-top: 0.4rem; font-family: 'Consolas',monospace;
-                        font-size: 0.82rem; color: var(--ink-text-muted);
-                        background: var(--ink-surface-2);
-                        padding: 4px 10px; border-radius: 6px;
-                        border: 1px solid var(--ink-border-soft);
-                        overflow: hidden; text-overflow: ellipsis;
-                        white-space: nowrap;" title="{actual_path}">
-                {actual_path}
-            </div>
-            {f'<div style="margin-top:0.4rem; font-size:0.78rem; color: var(--ink-text-muted);">{tag}</div>' if tag else ''}
+            {f'<div class="ink-active-card-meta">{tag}</div>' if tag else ''}
         </div>
         """,
         unsafe_allow_html=True,
@@ -219,7 +198,7 @@ def _render_active_project_card(active) -> None:
     col_open, _ = st.columns([1, 2])
     with col_open:
         if st.button(
-            ":material/folder_open: เปิดโฟลเดอร์",
+            ":material/folder_open: เปิดโฟลเดอร์ในระบบ",
             help="เปิดโฟลเดอร์ของโปรเจกต์นี้ใน File Explorer",
             key="btn_open_active_folder",
             width='stretch',
@@ -285,40 +264,21 @@ def _render_project_picker(projects, active) -> None:
             "โปรเจกต์เริ่มต้น (ลบไม่ได้)" if proj.is_default
             else (f"สร้างเมื่อ: {proj.created_at}" if proj.created_at else "")
         )
-        if is_active:
-            row_bg = "var(--ink-surface-tint-strong)"
-            border = "var(--ink-orange)"
-            icon = "radio_button_checked"
-            icon_color = "var(--ink-orange)"
-        else:
-            row_bg = "var(--ink-surface)"
-            border = "var(--ink-border)"
-            icon = "radio_button_unchecked"
-            icon_color = "var(--ink-text-muted)"
+        row_cls = "ink-proj-row" + (" active" if is_active else "")
+        icon = "radio_button_checked" if is_active else "radio_button_unchecked"
 
         col_info, col_action = st.columns([4, 1], vertical_alignment="center")
         with col_info:
             st.markdown(
                 f"""
-                <div style="background: {row_bg};
-                            padding: 0.7rem 0.9rem;
-                            border-radius: var(--ink-radius-md);
-                            border: 1px solid {border};
-                            display: flex; align-items: center; gap: 0.6rem;">
-                    <span class="micon" style="font-size:1.2em;color:{icon_color};">
-                        {icon}</span>
-                    <div style="flex:1; min-width:0;">
-                        <div style="font-weight: 600; font-size: 0.95rem;
-                                    color: var(--ink-text);">
+                <div class="{row_cls}">
+                    <span class="micon ink-proj-icon">{icon}</span>
+                    <div class="ink-proj-text">
+                        <div class="ink-proj-name">
                             {proj.name} {exists_mark}
                         </div>
-                        <div style="font-family: monospace; font-size: 0.75rem;
-                                    color: var(--ink-text-muted);
-                                    white-space: nowrap; overflow: hidden;
-                                    text-overflow: ellipsis;">
-                            {proj.path}
-                        </div>
-                        {f'<div style="font-size:0.72rem;color:var(--ink-text-faint);margin-top:2px;">{sub_text}</div>' if sub_text else ''}
+                        <div class="ink-proj-path">{proj.path}</div>
+                        {f'<div class="ink-proj-sub">{sub_text}</div>' if sub_text else ''}
                     </div>
                 </div>
                 """,
@@ -327,9 +287,9 @@ def _render_project_picker(projects, active) -> None:
         with col_action:
             if is_active:
                 st.markdown(
-                    '<div style="text-align:center; padding: 0.6rem;'
-                    'color: var(--ink-orange-dark); font-weight:600; font-size:0.85rem;">'
-                    'กำลังใช้งาน</div>',
+                    '<div class="ink-proj-active-badge">'
+                    '<span class="micon">check_circle</span>'
+                    '<span>กำลังใช้งาน</span></div>',
                     unsafe_allow_html=True,
                 )
             else:
