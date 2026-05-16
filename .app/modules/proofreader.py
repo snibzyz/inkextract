@@ -1436,8 +1436,20 @@ class NovelProofreader:
                             mismatch_samples.append(
                                 f"`{current_file}` บรรทัด {line_number}"
                             )
-                target['corrected_content'] = fixed_line
-                updated += 1
+                # ── กัน data loss + นับเฉพาะที่แก้จริง ──
+                # 1. ข้าม [แก้] ว่าง → user เผลอลบบรรทัด อย่าเขียนทับด้วย empty
+                # 2. ข้าม [แก้] เท่าเดิม → user ยังไม่ได้แก้
+                line_content = target.get('line_content', '')
+                fixed_trimmed = (fixed_line or '').strip()
+                if not fixed_trimmed:
+                    # ว่าง — ไม่ใช่การแก้, skip silently
+                    pass
+                elif self._normalize_import_text(fixed_line) == self._normalize_import_text(line_content):
+                    # เท่าเดิม — ยังไม่ได้แก้, skip
+                    pass
+                else:
+                    target['corrected_content'] = fixed_line
+                    updated += 1
             else:
                 not_matched += 1
                 if len(notfound_samples) < 3:
@@ -1447,7 +1459,7 @@ class NovelProofreader:
 
         # สรุปผล
         if updated > 0:
-            msg = f"นำเข้าการแก้ไขสำเร็จ — อัพเดต {updated} รายการ"
+            msg = f"นำเข้าการแก้ไขสำเร็จ — อัพเดต **{updated}** รายการที่มี [แก้] ใหม่"
             if not_matched:
                 msg += f" · จับคู่ไม่ได้: {not_matched}"
             st.success(msg)
@@ -1466,10 +1478,17 @@ class NovelProofreader:
                     + ("..." if not_matched > len(notfound_samples) else "")
                     + " — ตรวจชื่อไฟล์/หมายเลขบรรทัดให้ตรงกับตอนวิเคราะห์"
                 )
-        else:
+        elif not_matched > 0:
             st.warning(
-                f"ไม่มี entry ที่อัพเดตได้ (จับคู่ไม่ได้: {not_matched}) — "
-                "ตรวจชื่อไฟล์/หมายเลขบรรทัด หรือเช็คว่าบรรทัด [แก้] ไม่ถูกลบ"
+                f"จับคู่ไม่ได้ {not_matched} รายการ — ตรวจชื่อไฟล์/หมายเลขบรรทัด: "
+                + ", ".join(notfound_samples)
+                + ("..." if not_matched > len(notfound_samples) else "")
+            )
+        else:
+            st.info(
+                "อ่านไฟล์สำเร็จ แต่ยังไม่มี [แก้] ที่ต่างจาก [เดิม] — "
+                "user อาจยังไม่ได้แก้ไขเนื้อหา ลองเปิดไฟล์ใน `Import/normal_mode_import.txt` "
+                "แล้วเขียนคำแปลใหม่ที่บรรทัด [แก้] ก่อนกดนำเข้าอีกครั้ง"
             )
 
         return updated
@@ -1540,6 +1559,9 @@ class NovelProofreader:
                 corrected = error.get('corrected_content', original)
                 if corrected == original:
                     continue  # ยังไม่ได้แก้
+                # กัน data loss — empty/whitespace = ข้าม ไม่เขียนทับ
+                if not corrected or not corrected.strip():
+                    continue
                 # คง newline เดิม (อาจเป็น \n หรือ \r\n)
                 orig_raw = lines[line_idx]
                 newline = '\r\n' if orig_raw.endswith('\r\n') else '\n'
