@@ -190,13 +190,13 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
 * Buttons — uniform size + orange theme + consistent radius
 * ============================================================ */
 .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button {{
-    height: 40px !important;
-    min-height: 40px !important;
-    padding: 8px 18px !important;
+    height: 46px !important;
+    min-height: 46px !important;
+    padding: 10px 22px !important;
     border-radius: var(--ink-radius-md) !important;
     font-weight: 600 !important;
-    font-size: 0.92rem !important;
-    line-height: 1.2 !important;
+    font-size: 1rem !important;
+    line-height: 1.3 !important;
     transition: all 0.15s !important;
 }}
 .stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"],
@@ -216,10 +216,35 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     color: var(--ink-orange-dark) !important;
 }}
 
-/* Tabs */
-.stTabs [data-baseweb="tab-highlight"] {{ background-color: var(--ink-orange); }}
-.stTabs [aria-selected="true"] {{ color: var(--ink-orange-dark) !important; }}
-.stTabs [data-baseweb="tab"] {{ font-weight: 600; }}
+/* Tabs — main + sub tabs ใหญ่ขึ้น อ่านง่าย */
+.stTabs [data-baseweb="tab-highlight"] {{
+    background-color: var(--ink-orange) !important;
+    height: 3px !important;
+}}
+.stTabs [aria-selected="true"] {{
+    color: var(--ink-orange-dark) !important;
+}}
+.stTabs [data-baseweb="tab"] {{
+    font-weight: 600 !important;
+    font-size: 1.05rem !important;
+    padding: 0.85rem 1.4rem !important;
+    height: auto !important;
+    min-height: 52px !important;
+}}
+.stTabs [data-baseweb="tab"] p {{
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+}}
+/* tab icon (Material Symbols) ใหญ่ขึ้นตามตัวอักษร */
+.stTabs [data-baseweb="tab"] span[role="img"][aria-label$=" icon"] {{
+    font-size: 1.25em !important;
+    margin-right: 0.4rem !important;
+}}
+/* tab-list ระยะห่างเพิ่ม */
+.stTabs [data-baseweb="tab-list"] {{
+    gap: 0.25rem !important;
+}}
 
 /* Progress + metric */
 .stProgress > div > div > div > div {{ background-color: var(--ink-orange); }}
@@ -231,10 +256,27 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     font-weight: 600 !important;
 }}
 
-/* Inputs — uniform radius + theme bg */
+/* Inputs — uniform radius + theme bg + ขนาดใหญ่ขึ้น */
 .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div,
 .stMultiSelect div[data-baseweb="select"] > div, .stTextArea textarea {{
     border-radius: var(--ink-radius-md) !important;
+    font-size: 1rem !important;
+}}
+.stTextInput input, .stNumberInput input {{
+    min-height: 46px !important;
+    padding: 10px 14px !important;
+}}
+/* Input labels */
+.stTextInput label, .stNumberInput label, .stSelectbox label,
+.stMultiSelect label, .stTextArea label, .stCheckbox label,
+.stRadio label, .stSlider label, .stFileUploader label,
+.stDateInput label, .stTimeInput label, .stToggle label {{
+    font-size: 0.98rem !important;
+    font-weight: 500 !important;
+}}
+/* Checkbox / Toggle text */
+.stCheckbox p, .stToggle p, .stRadio p {{
+    font-size: 1rem !important;
 }}
 
 /* ============================================================
@@ -296,7 +338,7 @@ div[data-baseweb="popover"] > div[data-baseweb="menu"] > div {{
 }}
 /* Selectbox input field — match กับ dropdown */
 .stSelectbox div[data-baseweb="select"] > div {{
-    min-height: 44px !important;
+    min-height: 46px !important;
     font-size: 1rem !important;
 }}
 
