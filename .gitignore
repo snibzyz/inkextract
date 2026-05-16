@@ -10,6 +10,9 @@ workspace/**
 # User projects (multi-project mode) — ทั้งหมดเป็นข้อมูลผู้ใช้ ไม่ commit
 projects/
 
+# Playwright visual audit output — regenerated โดย _audit_ui.py ทุกครั้ง
+_screenshots/
+
 # ============================================================
 # Local environment / build artifacts
 # ============================================================

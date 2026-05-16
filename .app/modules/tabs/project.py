@@ -32,27 +32,24 @@ def _reset_cached_processors() -> None:
 
 
 def render_active_bar() -> None:
-    """แถบบอกโปรเจกต์ที่ใช้งานอยู่ — แสดงเหนือ tabs ตลอดเวลา"""
+    """แถบสลิม 1 บรรทัด แสดงโปรเจกต์ที่ใช้งานอยู่ — เหนือ tabs ตลอด
+
+    Single source of truth: นี่คือที่เดียวที่แสดง "โปรเจกต์ปัจจุบัน" รวม path.
+    ใน Project tab จะมี active card สำหรับ action (rename, change, etc.) แต่
+    ไม่ซ้ำกับแถบนี้ — แถบเป็น context indicator, card เป็น control surface.
+    """
     active = project_manager.get_active_project()
-    label = "(เริ่มต้น)" if active.is_default else ""
-    # ใช้ root_path() (derive ปัจจุบัน) ไม่ใช่ active.path (อาจเป็น stale absolute)
     actual_path = str(active.root_path())
+    tag_html = (
+        '<span class="ink-active-tag">เริ่มต้น</span>' if active.is_default else ''
+    )
     st.markdown(
         f"""
-        <div style="background: var(--ink-surface-tint, #fff7ed); padding: 0.6rem 1rem;
-                    border-left: 4px solid var(--ink-orange, #f97316);
-                    border-radius: var(--ink-radius-md, 8px);
-                    margin-bottom: 0.75rem; color: var(--ink-text, #111);">
-            <span style="font-size: 0.85em; color: var(--ink-text-muted, #666);">
-                โปรเจกต์ที่ใช้งาน:
-            </span>
-            <strong style="font-size: 1.05em;">{active.name}</strong>
-            <span style="font-size: 0.8em; color: var(--ink-text-muted, #666);
-                         margin-left: 0.5rem;">{label}</span>
-            <span style="font-size: 0.8em; color: var(--ink-text-muted, #666);
-                         margin-left: 0.75rem;">
-                <code>{actual_path}</code>
-            </span>
+        <div class="ink-active-bar">
+            <span class="ink-active-label">โปรเจกต์ที่ใช้งาน:</span>
+            <span class="ink-active-name">{active.name}</span>
+            {tag_html}
+            <code title="{actual_path}">{actual_path}</code>
         </div>
         """,
         unsafe_allow_html=True,

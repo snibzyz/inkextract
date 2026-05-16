@@ -62,28 +62,29 @@ def main():
     md_converter = st.session_state.md_converter
     docx_converter = st.session_state.docx_converter
     
-    # Quick Stats Dashboard
-    st.markdown("### :material/dashboard: สถิติการทำงาน")
-    col1, col2, col3, col4 = st.columns(4)
+    # Quick Stats — collapsed by default (progressive disclosure)
+    # Psychology: stats เป็น "อยากดูเมื่ออยากดู" — ไม่ควรกินพื้นที่ตลอด
+    input_files = len(list(proofreader.input_dir.glob("*.txt"))) if proofreader.input_dir.exists() else 0
+    fix_files = len(list(file_processor.fix_dir.glob("*.txt"))) if file_processor.fix_dir.exists() else 0
+    clean_files = len(list(file_processor.clean_dir.glob("*.txt"))) if file_processor.clean_dir.exists() else 0
+    error_count = len(proofreader.found_errors)
 
-    with col1:
-        input_files = len(list(proofreader.input_dir.glob("*.txt"))) if proofreader.input_dir.exists() else 0
-        st.metric("ไฟล์ต้นฉบับ", input_files, help="ไฟล์ในโฟลเดอร์ 0-input")
-
-    with col2:
-        fix_files = len(list(file_processor.fix_dir.glob("*.txt"))) if file_processor.fix_dir.exists() else 0
-        st.metric("ไฟล์แก้ไข", fix_files, help="ไฟล์ในโฟลเดอร์ 1-fix")
-
-    with col3:
-        clean_files = len(list(file_processor.clean_dir.glob("*.txt"))) if file_processor.clean_dir.exists() else 0
-        st.metric("ไฟล์สะอาด", clean_files, help="ไฟล์ในโฟลเดอร์ 2-clean")
-
-    with col4:
-        error_count = len(proofreader.found_errors)
-        delta_color = "normal" if error_count == 0 else "inverse"
-        st.metric("ข้อผิดพลาด", error_count, help="จำนวนข้อผิดพลาดที่พบ", delta_color=delta_color)
-
-    st.markdown("---")
+    summary = (
+        f"ต้นฉบับ {input_files} · แก้ไข {fix_files} · สะอาด {clean_files} · "
+        f"errors {error_count}"
+    )
+    with st.expander(
+        f":material/dashboard: สถิติการทำงาน — {summary}",
+        expanded=False,
+    ):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("ไฟล์ต้นฉบับ", input_files, help="ไฟล์ในโฟลเดอร์ Input")
+        c2.metric("ไฟล์แก้ไข", fix_files, help="ไฟล์ในโฟลเดอร์ Fix")
+        c3.metric("ไฟล์สะอาด", clean_files, help="ไฟล์ในโฟลเดอร์ Clean")
+        c4.metric(
+            "ข้อผิดพลาด", error_count, help="จำนวนข้อผิดพลาดที่พบ",
+            delta_color=("normal" if error_count == 0 else "inverse"),
+        )
 
     # Tabs หลัก — :material/<icon>: syntax (Streamlit 1.34+)
     tab_project, tab_manuscript, tab_vocab, tab_proof, tab_files = st.tabs([

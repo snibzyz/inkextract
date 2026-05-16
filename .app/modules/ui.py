@@ -11,11 +11,12 @@ import streamlit as st
 from contextlib import contextmanager
 from typing import Optional, Iterable
 
-# ===== ธีมสีส้ม INKEXTRACT =====
-ORANGE_PRIMARY = "#F57C00"
-ORANGE_DARK = "#E65100"
-ORANGE_LIGHT = "#FFB74D"
-ORANGE_BG = "#FFF3E0"
+# ===== ธีมสีส้ม INKEXTRACT — aligned กับ INKREALM amber (#F59E0B)
+# = single source of truth ของตระกูล INK · ตาม Z:\Mega Project\CLAUDE.md §4 =====
+ORANGE_PRIMARY = "#F59E0B"   # amber-500 — primary brand
+ORANGE_DARK = "#D97706"      # amber-600 — hover/active
+ORANGE_LIGHT = "#FBBF24"     # amber-400 — accent/highlight
+ORANGE_BG = "#FEF3C7"        # amber-100 — soft tint background
 TEXT_DARK = "#3E2723"
 GRAY_BORDER = "#E0E0E0"
 
@@ -131,19 +132,19 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
 
     --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
     --ink-shadow-md: 0 2px 8px rgba(0,0,0,0.06);
-    --ink-shadow-lg: 0 8px 18px rgba(245,124,0,0.18);
+    --ink-shadow-lg: 0 8px 18px rgba(245,158,11,0.18);
 }}
 
-/* ── Dark theme tokens (shared by all dark selectors) ── */
+/* ── Dark theme tokens (shared by all dark selectors) — amber palette ── */
 @media (prefers-color-scheme: dark) {{
     :root {{
-        --ink-orange: #FFA726;
-        --ink-orange-dark: #FFB74D;
-        --ink-orange-light: #FFD180;
+        --ink-orange: #FBBF24;             /* amber-400 — brighter for dark bg */
+        --ink-orange-dark: #F59E0B;        /* amber-500 — hover/active */
+        --ink-orange-light: #FCD34D;       /* amber-300 — accent */
         --ink-surface: #1E2129;
         --ink-surface-2: #262730;
-        --ink-surface-tint: rgba(255,167,38,0.10);
-        --ink-surface-tint-strong: rgba(255,167,38,0.16);
+        --ink-surface-tint: rgba(251,191,36,0.10);
+        --ink-surface-tint-strong: rgba(251,191,36,0.18);
         --ink-surface-input: #2A2D36;
         --ink-text: #FAFAFA;
         --ink-text-strong: #FFFFFF;
@@ -151,7 +152,7 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
         --ink-text-faint: #8B8B8B;
         --ink-border: #3D434B;
         --ink-border-soft: #2E333B;
-        --ink-border-orange: #FFB74D;
+        --ink-border-orange: #FCD34D;
         --ink-success: #81C784;
         --ink-success-bg: rgba(46,125,50,0.20);
         --ink-warn: #EF9A9A;
@@ -167,13 +168,13 @@ html[data-theme="dark"],
 body[data-theme="dark"],
 .stApp[data-theme="dark"],
 [data-theme="dark"] {{
-    --ink-orange: #FFA726;
-    --ink-orange-dark: #FFB74D;
-    --ink-orange-light: #FFD180;
+    --ink-orange: #FBBF24;
+    --ink-orange-dark: #F59E0B;
+    --ink-orange-light: #FCD34D;
     --ink-surface: #1E2129;
     --ink-surface-2: #262730;
-    --ink-surface-tint: rgba(255,167,38,0.10);
-    --ink-surface-tint-strong: rgba(255,167,38,0.16);
+    --ink-surface-tint: rgba(251,191,36,0.10);
+    --ink-surface-tint-strong: rgba(251,191,36,0.18);
     --ink-surface-input: #2A2D36;
     --ink-text: #FAFAFA;
     --ink-text-strong: #FFFFFF;
@@ -181,7 +182,7 @@ body[data-theme="dark"],
     --ink-text-faint: #8B8B8B;
     --ink-border: #3D434B;
     --ink-border-soft: #2E333B;
-    --ink-border-orange: #FFB74D;
+    --ink-border-orange: #FCD34D;
     --ink-success: #81C784;
     --ink-success-bg: rgba(46,125,50,0.20);
     --ink-warn: #EF9A9A;
@@ -189,39 +190,6 @@ body[data-theme="dark"],
     --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
     --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
     --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
-}}
-
-/* dark mode — auto via system preference */
-@media (prefers-color-scheme: dark) {{
-    :root {{
-        --ink-orange: #FFA726;
-        --ink-orange-dark: #FFB74D;
-        --ink-orange-light: #FFD180;
-
-        --ink-surface: #1E2129;
-        --ink-surface-2: #262730;
-        --ink-surface-tint: rgba(255,167,38,0.10);
-        --ink-surface-tint-strong: rgba(255,167,38,0.16);
-        --ink-surface-input: #2A2D36;
-
-        --ink-text: #FAFAFA;
-        --ink-text-strong: #FFFFFF;
-        --ink-text-muted: #C7B9B0;
-        --ink-text-faint: #8B8B8B;
-
-        --ink-border: #3D434B;
-        --ink-border-soft: #2E333B;
-        --ink-border-orange: #FFB74D;
-
-        --ink-success: #81C784;
-        --ink-success-bg: rgba(46,125,50,0.20);
-        --ink-warn: #EF9A9A;
-        --ink-warn-bg: rgba(198,40,40,0.20);
-
-        --ink-shadow-sm: 0 1px 3px rgba(0,0,0,0.30);
-        --ink-shadow-md: 0 2px 10px rgba(0,0,0,0.35);
-        --ink-shadow-lg: 0 8px 22px rgba(0,0,0,0.45);
-    }}
 }}
 
 /* ============================================================
@@ -318,17 +286,24 @@ body[data-theme="dark"],
 }}
 
 /* ============================================================
- * Selectbox / Multiselect dropdown — รายการสูงขึ้น อ่านง่าย
+ * Selectbox / Multiselect dropdown — แสดงครบทุก option, อ่านง่าย
  *
- * IMPORTANT: Streamlit/baseweb wraps <li role="option"> ใน <div role="listbox">
- *            (NOT <ul>) — ดังนั้น selector ตรง `li[role="option"]` ถึงจะ match
+ * โครงสร้าง DOM จริง (Streamlit 1.51 + baseweb — verified via playwright):
+ *   div[data-baseweb="popover"]                    ← outer popover wrapper
+ *     div.st-gx                                    ← scrollable wrapper
+ *       div.st-h3                                  ← height-auto pass-through
+ *         ul                                       ← list container (NO role="listbox")
+ *           div [inline height: Npx; overflow: auto; will-change: transform]
+ *             div [inline height: Npx; width: 100%]  ← react-window sizer
+ *               li[role="option"] [pos:absolute; top:0; height:40px]  ← virtualized items
  *
- * Virtual scroll: <li> ใช้ position:absolute + inline height=40px
- *                 ต้อง override ทั้ง position + top + height ผ่าน !important
+ * ปัญหา: react-window คำนวณ sizer ที่ N×40px (item count × 40). พอเราขยาย li
+ * เป็น 52px ผ่าน CSS, sizer ยังเป็น 40px-base → เนื้อหาล้น & ถูก clip
+ *
+ * วิธีแก้: kill inline height ของทุก div ระหว่าง ul กับ li → ให้ flex stack
+ * ตามจริง แล้ว apply max-height + scroll ที่ ul ตัวเดียว
  * ============================================================ */
-[role="listbox"] {{
-    padding: 0.3rem 0 !important;
-}}
+/* Item — break virtual scroll: position:absolute → relative, height auto */
 li[role="option"] {{
     position: relative !important;
     top: auto !important;
@@ -362,14 +337,66 @@ li[role="option"][aria-selected="true"] > div,
 li[role="option"][aria-selected="true"] > div > div {{
     color: white !important;
 }}
-/* container ที่ครอบ list — ปล่อย height auto + max-height + scroll */
-div[data-baseweb="popover"] [role="listbox"],
-div[data-baseweb="popover"] > div {{
+
+/* Kill react-window sizer heights — let li's stack naturally
+   (covers both `ul` form ปัจจุบัน และ `[role="listbox"]` form อนาคต) */
+div[data-baseweb="popover"] ul > div,
+div[data-baseweb="popover"] ul > div > div,
+div[data-baseweb="popover"] [role="listbox"] > div,
+div[data-baseweb="popover"] [role="listbox"] > div > div {{
     height: auto !important;
-    max-height: 400px !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    will-change: auto !important;
+    transform: none !important;
+}}
+
+/* List container (ul) — scroll ที่นี่ที่เดียว, padding ให้ตัว item หายใจ */
+div[data-baseweb="popover"] ul,
+div[data-baseweb="popover"] [role="listbox"] {{
+    height: auto !important;
+    max-height: 420px !important;  /* ~8 rows ของ 52px */
     overflow-y: auto !important;
+    overflow-x: hidden !important;
+    min-width: 320px !important;
+    padding: 0.3rem 0 !important;
+    scroll-behavior: smooth !important;
+}}
+
+/* Outer popover wrappers — auto height (กัน double scrollbar) */
+div[data-baseweb="popover"] > div,
+div[data-baseweb="popover"] > div > div {{
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     min-width: 320px !important;
 }}
+
+/* Popover เอง — shadow + radius + theme bg ให้ดูเด่น (UX) */
+div[data-baseweb="popover"] {{
+    border-radius: var(--ink-radius-md) !important;
+    box-shadow: var(--ink-shadow-lg, 0 8px 24px rgba(0,0,0,0.18)) !important;
+    background: var(--ink-surface, white) !important;
+    border: 1px solid var(--ink-border, #E0E0E0) !important;
+    overflow: hidden !important;  /* clip rounded corners */
+}}
+
+/* Scrollbar ของ popover — เรียวบาง สไตล์ INKEXTRACT */
+div[data-baseweb="popover"] ul::-webkit-scrollbar,
+div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar {{
+    width: 8px !important;
+}}
+div[data-baseweb="popover"] ul::-webkit-scrollbar-thumb,
+div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb {{
+    background: var(--ink-border, #ccc) !important;
+    border-radius: 4px !important;
+}}
+div[data-baseweb="popover"] ul::-webkit-scrollbar-thumb:hover,
+div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
+    background: var(--ink-orange-light) !important;
+}}
+
 /* Selectbox input field — match กับ dropdown */
 .stSelectbox div[data-baseweb="select"] > div {{
     min-height: 46px !important;
@@ -432,54 +459,85 @@ div[data-baseweb="popover"] > div {{
 .stCheckbox label, .stRadio label, .stMultiSelect label {{ color: var(--ink-text) !important; }}
 
 /* ============================================================
-* INKEXTRACT app header — orange gradient, white text on both themes
+* INKEXTRACT app header — compact 1-row brand bar
+* Psychology: F-pattern reading → logo+title top-left (first attention),
+* version chip top-right (status/trust). Height ≤ 72px keeps content
+* the focus, not chrome.
 * ============================================================ */
 .ink-header {{
     background: linear-gradient(135deg, {ORANGE_PRIMARY} 0%, {ORANGE_DARK} 100%);
-    border-radius: 14px;
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1.25rem;
-    box-shadow: 0 4px 14px rgba(245,124,0,0.25);
+    border-radius: 10px;
+    padding: 0.6rem 1rem;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 2px 8px rgba(245,158,11,0.20);
     color: white;
 }}
-.ink-header h1 {{
-    margin: 0; color: white; font-size: 2rem; letter-spacing: 1px;
-    font-weight: 800;
-}}
-.ink-header p {{ margin: 0.25rem 0 0; color: #FFE0B2; font-size: 0.95rem; }}
 .ink-header-row {{
-    display: flex; align-items: center; gap: 1rem;
+    display: flex; align-items: center; gap: 0.85rem;
 }}
-.ink-header-text {{ flex: 1; min-width: 0; }}
+.ink-header-text {{ flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.6rem; }}
+.ink-header h1 {{
+    margin: 0; color: white; font-size: 1.3rem; letter-spacing: 0.5px;
+    font-weight: 700; line-height: 1.1;
+}}
+.ink-header p.ink-tagline {{
+    margin: 0; color: rgba(255,255,255,0.85);
+    font-size: 0.85rem; font-weight: 400;
+    border-left: 1px solid rgba(255,255,255,0.35);
+    padding-left: 0.7rem;
+}}
+@media (max-width: 900px) {{ .ink-header p.ink-tagline {{ display: none; }} }}
 .ink-logo {{
-    width: 56px; height: 56px; flex-shrink: 0;
-    border-radius: 12px;
+    width: 36px; height: 36px; flex-shrink: 0;
+    border-radius: 8px;
     background: rgba(255,255,255,0.95);
-    padding: 4px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    padding: 3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.18);
 }}
 .ink-version-badge {{
     display: inline-block;
-    margin-left: 0.6rem;
     padding: 2px 10px;
     background: rgba(255,255,255,0.18);
     border: 1px solid rgba(255,255,255,0.3);
     border-radius: 999px;
-    font-size: 0.6em; font-weight: 600;
+    font-size: 0.78rem; font-weight: 600;
     color: white;
-    vertical-align: middle;
     letter-spacing: 0.3px;
+    flex-shrink: 0;
 }}
-.ink-install-root {{
-    margin: 0.35rem 0 0; font-size: 0.7rem !important;
-    color: rgba(255,255,255,0.75) !important;
-    font-family: monospace;
+
+/* ============================================================
+* Active project bar — slim 1-line strip below header
+* Single source of truth — แสดงทุก tab (ไม่ใช่ duplicate ของ Project tab section)
+* ============================================================ */
+.ink-active-bar {{
+    background: var(--ink-surface-tint);
+    border-left: 3px solid var(--ink-orange);
+    border-radius: var(--ink-radius-md);
+    padding: 0.45rem 0.85rem;
+    margin-bottom: 0.6rem;
+    color: var(--ink-text);
+    display: flex; align-items: center; gap: 0.6rem;
+    font-size: 0.88rem;
+    line-height: 1.4;
 }}
-.ink-install-root code {{
-    background: rgba(0,0,0,0.18);
-    color: #ffe6cc;
-    padding: 1px 6px; border-radius: 4px;
-    font-size: 0.95em;
+.ink-active-bar .ink-active-label {{
+    color: var(--ink-text-muted); font-size: 0.8rem;
+}}
+.ink-active-bar .ink-active-name {{
+    font-weight: 700; color: var(--ink-orange-dark);
+}}
+.ink-active-bar .ink-active-tag {{
+    font-size: 0.72rem; padding: 1px 7px; border-radius: 999px;
+    background: var(--ink-surface-tint-strong);
+    color: var(--ink-orange-dark); font-weight: 600;
+}}
+.ink-active-bar code {{
+    margin-left: auto; font-family: 'Consolas','Courier New',monospace;
+    font-size: 0.78rem; color: var(--ink-text-muted);
+    background: var(--ink-surface-2); padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--ink-border-soft);
+    max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
 
 /* ============================================================
@@ -571,7 +629,12 @@ def page_setup(page_title: str = APP_NAME, page_icon: Optional[str] = None) -> N
 
 
 def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
-    """หัวหน้าเพจสีส้ม — แสดงโลโก้ + เวอร์ชัน + install root"""
+    """หัวหน้าเพจสีส้ม — แถบเดียวบาง ๆ มีโลโก้ + ชื่อ + tagline + version chip
+
+    Psychology: F-pattern → eye lands top-left first. โลโก้+ชื่อต้องอยู่ที่นั่น
+    Cognitive load: install path = diagnostic → ย้ายไปแสดงใน tooltip ของ version chip
+    เพื่อลด noise. ตำแหน่ง install ของจริงอยู่ใน Project tab → "ตำแหน่ง install" expander
+    """
     logo_path = _resolve_logo_path()
     if logo_path:
         try:
@@ -599,10 +662,10 @@ def header(title: str = APP_NAME, tagline: str = APP_TAGLINE) -> None:
             <div class="ink-header-row">
                 {logo_html}
                 <div class="ink-header-text">
-                    <h1>{title} {version_html}</h1>
-                    <p>{tagline}</p>
-                    <p class="ink-install-root">install: <code>{install_root}</code></p>
+                    <h1>{title}</h1>
+                    <p class="ink-tagline">{tagline}</p>
                 </div>
+                {version_html}
             </div>
         </div>""",
         unsafe_allow_html=True,
