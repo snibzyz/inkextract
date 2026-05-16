@@ -80,37 +80,66 @@ def _render_stepper(active_idx: int, done_until: int = -1) -> None:
     st.markdown(html, unsafe_allow_html=True)
 
 
+def _has_source_files() -> bool:
+    """Step 1 done — source folder มีไฟล์ .txt อย่างน้อย 1 ไฟล์"""
+    return paths.INPUT_DIR.exists() and any(paths.INPUT_DIR.glob("*.txt"))
+
+
+def _has_fix_output() -> bool:
+    """Step 5 done — มีไฟล์ใน Fix/ หรือ Finish/ ของ project ปัจจุบัน"""
+    for d in (paths.FIX_DIR, paths.FINISH_DIR):
+        if d.exists() and any(d.glob("*.txt")):
+            return True
+    return False
+
+
 def _ab_step_state(proofreader, export_files_exist: bool) -> tuple[int, int]:
-    """คำนวณ stepper state สำหรับ AB mode → (active_idx, done_until)."""
-    has_errors = bool(proofreader.found_errors)
+    """คำนวณ stepper state สำหรับ AB mode → (active_idx, done_until).
+
+    Strict sequential: ขั้นถัดไป active ก็ต่อเมื่อขั้นก่อนหน้า done ครบ
+    Inference: ถ้ามี artifact ของขั้นหลัง (export/fix files) แสดงว่าขั้นก่อนทำเสร็จแน่
+    ๆ → ป้องกัน fresh-load โชว์ ✓ ผิด ๆ จากไฟล์ค้างจาก session เก่า
+    """
+    fix_exists = _has_fix_output()
+    has_errors = bool(proofreader.found_errors) or export_files_exist or fix_exists
     has_corrections = any(
-        e.get('corrected_content') for e in (proofreader.found_errors or [])
-    )
-    if has_corrections:
-        return (4, 3)   # อยู่ step 5 (แก้ไขไฟล์)
-    if export_files_exist:
-        return (3, 2)   # อยู่ step 4 (นำเข้า)
-    if has_errors:
-        return (2, 1)   # อยู่ step 3 (ส่งออก)
-    if proofreader.normal_mode_stats.get('files', 0) > 0 or has_errors:
-        return (1, 0)
-    return (1, 0)       # default: อยู่ step 2 (วิเคราะห์)
+        e.get('corrected_B') or e.get('corrected_content')
+        for e in (proofreader.found_errors or [])
+    ) or fix_exists
+
+    if not _has_source_files():
+        return (0, -1)                 # step 1 active (ยังไม่มี source)
+    if not has_errors:
+        return (1, 0)                  # step 1 ✓ · step 2 active
+    if not export_files_exist:
+        return (2, 1)                  # step 1-2 ✓ · step 3 active
+    if not has_corrections:
+        return (3, 2)                  # step 1-3 ✓ · step 4 active
+    if not fix_exists:
+        return (4, 3)                  # step 1-4 ✓ · step 5 active
+    return (4, 4)                      # ทุก step ✓
 
 
 def _normal_step_state(proofreader, export_files_exist: bool) -> tuple[int, int]:
-    """คำนวณ stepper state สำหรับ Normal mode."""
+    """คำนวณ stepper state สำหรับ Normal mode (ตรรกะเดียวกับ AB)"""
+    fix_exists = _has_fix_output()
     errors = proofreader.normal_mode_errors or []
-    has_errors = bool(errors)
-    has_corrections = any(e.get('corrected_content') for e in errors)
-    if has_corrections:
-        return (4, 3)
-    if export_files_exist:
-        return (3, 2)
-    if has_errors:
-        return (2, 1)
-    if proofreader.normal_mode_stats.get('files', 0) > 0:
+    has_errors = bool(errors) or export_files_exist or fix_exists
+    has_corrections = any(
+        e.get('corrected_content') for e in errors
+    ) or fix_exists
+
+    if not _has_source_files():
+        return (0, -1)
+    if not has_errors:
         return (1, 0)
-    return (1, 0)
+    if not export_files_exist:
+        return (2, 1)
+    if not has_corrections:
+        return (3, 2)
+    if not fix_exists:
+        return (4, 3)
+    return (4, 4)
 
 
 def _ab_export_exists() -> bool:
