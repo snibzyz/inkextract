@@ -238,20 +238,39 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
 }}
 
 /* ============================================================
- * Selectbox / Multiselect dropdown popup — อ่านง่ายขึ้น
- * Note: <li> ใช้ virtual scroll height=40px ห้ามแก้ height — แก้ font/padding ในกรอบเดิม
+ * Selectbox / Multiselect dropdown popup — รายการสูงขึ้น อ่านง่าย
+ *
+ * Trick: Streamlit ใช้ baseweb virtual scroll ที่ position <li> ด้วย absolute
+ * + height=40px คงที่ — ทำให้แก้ขนาดยาก ถ้าใส่ min-height ตรงๆ จะ overlap
+ *
+ * วิธีแก้: บังคับ position:relative + auto height + override top/left
+ * → ทำลาย virtual scroll แต่ stacking ตามปกติ ใส่ขนาดเท่าไหร่ก็ได้
+ *   (เหมาะกับ dropdown < 50 รายการ ซึ่งแอปนี้ใช้ทั้งหมด)
  * ============================================================ */
+ul[role="listbox"] {{
+    height: auto !important;
+    max-height: 360px !important;
+    overflow-y: auto !important;
+    padding: 0.3rem 0 !important;
+}}
 ul[role="listbox"] li[role="option"] {{
-    padding: 0 0.9rem !important;
-    font-size: 0.98rem !important;
-    line-height: 40px !important;   /* ใช้ line-height = container height = แนวกลาง */
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    height: auto !important;
+    min-height: 52px !important;
+    padding: 0.75rem 1rem !important;
+    font-size: 1rem !important;
+    line-height: 1.45 !important;
+    display: flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
 }}
-ul[role="listbox"] li[role="option"] > div {{
-    width: 100% !important;
-}}
+ul[role="listbox"] li[role="option"] > div,
 ul[role="listbox"] li[role="option"] > div > div {{
-    font-size: 0.98rem !important;
-    line-height: 1.4 !important;
+    width: 100% !important;
+    font-size: 1rem !important;
+    line-height: 1.45 !important;
     padding: 0 !important;
 }}
 ul[role="listbox"] li[role="option"]:hover {{
@@ -262,17 +281,23 @@ ul[role="listbox"] li[role="option"][aria-selected="true"] {{
     color: white !important;
     font-weight: 600 !important;
 }}
+ul[role="listbox"] li[role="option"][aria-selected="true"] > div,
 ul[role="listbox"] li[role="option"][aria-selected="true"] > div > div {{
     color: white !important;
 }}
 /* ขยายความกว้าง dropdown popup เพื่อไม่ตัดข้อความ */
 div[data-baseweb="popover"] ul[role="listbox"] {{
-    min-width: 280px !important;
+    min-width: 320px !important;
 }}
-/* Selectbox input field — match font size กับ dropdown */
+/* ขยาย container ที่ครอบ ul (baseweb ใส่ height คงที่ = items*40px) */
+div[data-baseweb="popover"] > div[data-baseweb="menu"] > div {{
+    height: auto !important;
+    max-height: 360px !important;
+}}
+/* Selectbox input field — match กับ dropdown */
 .stSelectbox div[data-baseweb="select"] > div {{
-    min-height: 40px !important;
-    font-size: 0.98rem !important;
+    min-height: 44px !important;
+    font-size: 1rem !important;
 }}
 
 /* ============================================================
