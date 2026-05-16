@@ -175,14 +175,32 @@ class NovelProofreader:
 
     @staticmethod
     def _parse_import_line_number(line: str) -> Optional[int]:
+        """จับเลขบรรทัดจาก '123|' — รับทั้ง '123|' (เดิม) และ '123| [เดิม] ... [แก้] ...' (AI inline)"""
         if not isinstance(line, str):
             return None
-
-        match = re.match(r'^(\d+)\s*\|\s*$', line)
+        # ยอมให้มีอะไรต่อท้าย `|` (เช่น inline [เดิม]/[แก้] จาก AI)
+        match = re.match(r'^(\d+)\s*\|', line)
         if not match:
             return None
-
         return int(match.group(1))
+
+    @staticmethod
+    def _extract_orig_fixed_inline(line: str) -> Tuple[Optional[str], Optional[str]]:
+        """แยก [เดิม]...[แก้]... ที่อยู่บนบรรทัดเดียวกัน คืน (orig, fixed) — None ถ้าไม่เจอ.
+
+        รองรับ format ที่ AI บางตัวคืนมา เช่น:
+            '16504| [เดิม] xxx [แก้] yyy'
+            '[เดิม] xxx [แก้] yyy'
+        """
+        if not isinstance(line, str):
+            return None, None
+        # ตัด prefix 'NNN|' ออกก่อน (ถ้ามี)
+        body = re.sub(r'^\d+\s*\|\s*', '', line)
+        # [เดิม]...[แก้]... อยู่บรรทัดเดียว
+        m = re.search(r'\[เดิม\]\s*(.*?)\s*\[แก้\]\s*(.*)$', body)
+        if m:
+            return m.group(1).strip(), m.group(2).strip()
+        return None, None
 
     def _find_import_target(
         self,
@@ -1370,19 +1388,36 @@ class NovelProofreader:
                 i += 1
                 continue
 
-            # หา [เดิม] / [แก้] ใน 1-6 บรรทัดถัดไป
             orig_line: Optional[str] = None
             fixed_line: Optional[str] = None
-            j = i + 1
-            while j < len(lines) and (j - i) <= 6:
-                t = lines[j].strip()
-                if self._parse_import_file_header(t) or self._parse_import_line_number(t) is not None:
-                    break
-                if orig_line is None and t.startswith('[เดิม]'):
-                    orig_line = t[len('[เดิม]'):].lstrip()
-                elif fixed_line is None and t.startswith('[แก้]'):
-                    fixed_line = t[len('[แก้]'):].lstrip()
-                j += 1
+
+            # 1) ตรวจ inline: 'NNN| [เดิม] xxx [แก้] yyy' บนบรรทัดเดียวกัน
+            inline_orig, inline_fixed = self._extract_orig_fixed_inline(stripped)
+            if inline_fixed is not None:
+                orig_line = inline_orig
+                fixed_line = inline_fixed
+                j = i + 1
+            else:
+                # 2) Fallback: หา [เดิม] / [แก้] ใน 1-6 บรรทัดถัดไป (multi-line format เดิม)
+                #    รองรับด้วยว่าบรรทัดเดียวกันมี [เดิม]...[แก้]... ก็ได้
+                j = i + 1
+                while j < len(lines) and (j - i) <= 6:
+                    t = lines[j].strip()
+                    if self._parse_import_file_header(t) or self._parse_import_line_number(t) is not None:
+                        break
+                    # ตรวจ inline pair ในบรรทัดเดียว
+                    in_o, in_f = self._extract_orig_fixed_inline(t)
+                    if in_f is not None:
+                        orig_line = in_o
+                        fixed_line = in_f
+                        j += 1
+                        break
+                    # แยกบรรทัด (เดิม)
+                    if orig_line is None and t.startswith('[เดิม]'):
+                        orig_line = t[len('[เดิม]'):].lstrip()
+                    elif fixed_line is None and t.startswith('[แก้]'):
+                        fixed_line = t[len('[แก้]'):].lstrip()
+                    j += 1
 
             if fixed_line is None:
                 i = j
