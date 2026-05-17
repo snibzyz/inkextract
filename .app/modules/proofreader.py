@@ -1677,10 +1677,14 @@ class NovelProofreader:
         }
 
         if files_with_changes > 0:
-            dest_label = "ไฟล์ต้นทาง (in-place)" if in_place else f"`{destination_dir}`"
-            st.success(
-                f"แก้ไขสำเร็จ — {files_with_changes} ไฟล์ · {lines_replaced_total} บรรทัด → {dest_label}"
-            )
+            # Persistent banner — เก็บผลใน session เพื่อให้ user เห็น "ไปอยู่ไหน"
+            # แม้หลัง rerun (Streamlit re-execute script ทุก interaction)
+            st.session_state["_nm_last_fix"] = {
+                "destination": "" if in_place else str(destination_dir),
+                "files": int(files_with_changes),
+                "lines": int(lines_replaced_total),
+                "in_place": bool(in_place),
+            }
             st.toast(f"Fix สำเร็จ {files_with_changes} ไฟล์", icon="🛠️")
         else:
             st.info("ไม่มีบรรทัดที่ถูกแก้ (corrected_content ยังเท่ากับ line_content) — กดนำเข้าการแก้ไขก่อน")

@@ -168,6 +168,95 @@ def _normal_export_exists() -> bool:
     return False
 
 
+def _open_folder_in_os(folder_path: Path) -> None:
+    """เปิดโฟลเดอร์ใน file explorer ของ OS — Windows/macOS/Linux"""
+    import os, subprocess, sys as _sys
+    if not folder_path.exists():
+        st.error(f"ไม่พบโฟลเดอร์: `{folder_path}`")
+        return
+    try:
+        if _sys.platform == "win32":
+            os.startfile(str(folder_path))
+        elif _sys.platform == "darwin":
+            subprocess.run(["open", str(folder_path)], check=False)
+        else:
+            subprocess.run(["xdg-open", str(folder_path)], check=False)
+    except Exception as e:
+        st.error(f"เปิดโฟลเดอร์ไม่ได้: {e}")
+
+
+def _render_fix_result_banner(state_key: str, mode_label: str, btn_key_prefix: str) -> None:
+    """Persistent banner หลังกด 'แก้ไขไฟล์' — generic ใช้ได้ทั้ง AB / Normal mode.
+
+    เก็บผลใน st.session_state[state_key] = dict ที่มี:
+      - destination (str): path ปลายทาง — "" ถ้า in_place
+      - files (int): จำนวนไฟล์รวม
+      - lines (int): จำนวนบรรทัดที่แก้
+      - in_place (bool): True = เขียนทับต้นทาง
+      - files_with_changes (int, optional): จำนวนไฟล์ที่มีการแก้จริง
+
+    Banner ค้างไว้จน user กดปิด หรือ project เปลี่ยน (clear ใน _reset_cached_processors)
+    """
+    last = st.session_state.get(state_key)
+    if not last or not last.get("files"):
+        return
+
+    with st.container(border=True):
+        c_info, c_close = st.columns([10, 1])
+        with c_info:
+            dest = last.get("destination") or ""
+            in_place = bool(last.get("in_place"))
+            fwc = last.get("files_with_changes")
+            files_part = (
+                f"**{fwc}** ไฟล์มีการแก้ · จาก **{last['files']}** ไฟล์ทั้งหมด"
+                if fwc is not None
+                else f"**{last['files']}** ไฟล์"
+            )
+            if in_place:
+                st.success(
+                    f":material/check_circle: {mode_label} สำเร็จ — {files_part} · "
+                    f"**{last['lines']}** บรรทัด · เขียนทับ **ไฟล์ต้นทาง** (in-place)"
+                )
+            else:
+                st.success(
+                    f":material/check_circle: {mode_label} สำเร็จ — {files_part} · "
+                    f"**{last['lines']}** บรรทัดถูกแก้"
+                )
+                st.markdown(
+                    f'<div class="ink-section-hint">'
+                    f'ไฟล์ถูกเขียนไปที่: <code>{dest}</code>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        with c_close:
+            if st.button(
+                ":material/close:",
+                key=f"{btn_key_prefix}_close",
+                help="ปิด banner นี้",
+            ):
+                del st.session_state[state_key]
+                st.rerun()
+
+        if not in_place and dest:
+            if st.button(
+                ":material/folder_open: เปิดโฟลเดอร์ปลายทาง",
+                key=f"{btn_key_prefix}_open",
+                type="primary",
+                width="stretch",
+            ):
+                _open_folder_in_os(Path(dest))
+
+
+def _render_normal_fix_result_banner() -> None:
+    """Persistent banner หลังกด 'แก้ไขไฟล์' ใน Normal mode"""
+    _render_fix_result_banner("_nm_last_fix", "แก้ไข", "_nm_fix_banner")
+
+
+def _render_ab_fix_result_banner() -> None:
+    """Persistent banner หลังกด 'แก้ไขไฟล์' ใน AB mode"""
+    _render_fix_result_banner("_ab_last_fix", "แก้ไข", "_ab_fix_banner")
+
+
 def render(proofreader, file_processor) -> None:
     """แสดง proof tab ทั้งหมด — มี 3 sub-tabs"""
     tab_ab_mode, tab_normal_mode, tab_multi_folder = st.tabs([
@@ -180,6 +269,9 @@ def render(proofreader, file_processor) -> None:
         # Dynamic stepper — บอก step ปัจจุบันตาม state จริง
         ab_active, ab_done = _ab_step_state(proofreader, _ab_export_exists())
         _render_stepper(ab_active, ab_done)
+
+        # Persistent success banner หลังกด "แก้ไขไฟล์"
+        _render_ab_fix_result_banner()
 
         # Settings Section
         with st.container():
@@ -423,7 +515,14 @@ def render(proofreader, file_processor) -> None:
 
             # แสดงตัวอย่าง patterns ปัจจุบัน
             st.markdown("---")
-            st.markdown("**รูปแบบที่ใช้งานอยู่ (10 อันดับแรก):**")
+            st.markdown(
+                '<div class="ink-section-label sm">'
+                '<span class="micon">format_list_numbered</span>'
+                '<span>รูปแบบที่ใช้งานอยู่</span>'
+                '<span class="count">(10 อันดับแรก)</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
             if hasattr(regex_patterns, 'ignore_patterns_raw'):
                 patterns_preview = regex_patterns.ignore_patterns_raw[:10]
@@ -526,11 +625,56 @@ def render(proofreader, file_processor) -> None:
 
         # Fix & Clean Actions
         st.markdown("####  การประมวลผลไฟล์")
-        col4, col5 = st.columns(2)
 
+        # Destination picker — เลือกได้ว่าจะให้ไฟล์ที่แก้แล้วไปอยู่โฟลเดอร์ไหน
+        # (เทียบเท่ากับ Normal mode — UX consistent)
+        ab_prefs = preferences_manager.get_setting("proofreading_settings", "ab_mode", {}) or {}
+        ab_saved_dest = ab_prefs.get("fix_destination", str(paths.FIX_DIR))
+        ab_dest_presets = {
+            "Fix (แนะนำ)": paths.FIX_DIR,
+            "Clean": paths.CLEAN_DIR,
+            "Finish": paths.FINISH_DIR,
+            "ระบุเส้นทางเอง": None,
+        }
+        ab_dest_labels = list(ab_dest_presets.keys())
+        ab_saved_idx = 0
+        for i, p in enumerate(ab_dest_presets.values()):
+            if p is not None and str(p) == ab_saved_dest:
+                ab_saved_idx = i
+                break
+        else:
+            if ab_saved_dest and ab_saved_dest not in [str(p) for p in ab_dest_presets.values() if p]:
+                ab_saved_idx = len(ab_dest_labels) - 1  # custom
+
+        ab_selected_dest_label = st.selectbox(
+            "โฟลเดอร์ปลายทาง (เขียนไฟล์ที่แก้แล้ว):",
+            options=ab_dest_labels,
+            index=ab_saved_idx,
+            help="Pipeline: Input → Fix → Clean → Finish — default = Fix/",
+            key="ab_fix_dest_preset",
+        )
+        if ab_selected_dest_label == "ระบุเส้นทางเอง":
+            ab_dest_input = st.text_input(
+                "ระบุเส้นทางโฟลเดอร์ปลายทางเอง:",
+                value=ab_saved_dest if ab_saved_dest not in [str(p) for p in ab_dest_presets.values() if p] else "",
+                placeholder=f"เช่น {paths.FIX_DIR}",
+                key="ab_fix_destination_custom",
+            )
+            ab_destination_dir = Path(ab_dest_input.strip()).expanduser() if ab_dest_input.strip() else paths.FIX_DIR
+        else:
+            ab_destination_dir = ab_dest_presets[ab_selected_dest_label]
+
+        # persist เลือกล่าสุด
+        if str(ab_destination_dir) != ab_saved_dest:
+            preferences_manager.set_setting(
+                "proofreading_settings", "ab_mode",
+                {**ab_prefs, "fix_destination": str(ab_destination_dir)},
+            )
+
+        col4, col5 = st.columns(2)
         with col4:
             if st.button(" **แก้ไขไฟล์**", width='stretch', key="ab_btn_fix"):
-                file_processor.fix_files(proofreader.found_errors)
+                file_processor.fix_files(proofreader.found_errors, destination_dir=ab_destination_dir)
 
         with col5:
             if st.button(" **ทำความสะอาดไฟล์**", width='stretch', key="ab_btn_clean"):
@@ -588,6 +732,10 @@ def render(proofreader, file_processor) -> None:
         # Dynamic stepper เดียวกับ AB mode — UX consistent
         nm_active, nm_done = _normal_step_state(proofreader, _normal_export_exists())
         _render_stepper(nm_active, nm_done)
+
+        # Persistent success banner หลังกด "แก้ไขไฟล์" — บอก user ชัด ๆ ว่าไฟล์ไปอยู่ไหน
+        # + ปุ่มเปิดโฟลเดอร์ปลายทาง (Windows/macOS/Linux)
+        _render_normal_fix_result_banner()
 
         st.markdown("""
         <div style="background: var(--ink-surface-tint); padding: 1rem 1.25rem;

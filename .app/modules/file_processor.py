@@ -16,13 +16,22 @@ class FileProcessor:
         self.separate_dir = paths.SEPARATE_DIR
         paths.ensure_dirs()
     
-    def fix_files(self, found_errors: List[dict]):
-        """แก้ไขไฟล์และบันทึกลงโฟลเดอร์ fix - ดึงไฟล์ทั้งหมดจาก input และแก้เฉพาะบรรทัดที่มีปัญหา"""
+    def fix_files(self, found_errors: List[dict], destination_dir: 'Path | None' = None):
+        """แก้ไขไฟล์และบันทึกลงโฟลเดอร์ปลายทาง (default = Fix/) — ดึงไฟล์จาก Input/ และแก้เฉพาะบรรทัดที่มีปัญหา
+
+        Args:
+            found_errors: list ของ error dict จาก proofreader
+            destination_dir: โฟลเดอร์ปลายทาง — None = ใช้ paths.FIX_DIR (default)
+        """
         try:
+            # ใช้ paths.FIX_DIR แบบ dynamic (กันเคส singleton snapshot ค่าผิดหลังสลับ project)
+            target_dir = Path(destination_dir).expanduser() if destination_dir else paths.FIX_DIR
+            target_dir.mkdir(parents=True, exist_ok=True)
+
             # แสดง progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
-            
+
             # ดึงไฟล์ทั้งหมดจาก input
             txt_files = list(self.input_dir.glob("*.txt"))
             if not txt_files:
@@ -53,21 +62,23 @@ class FileProcessor:
             
             total_files = len(txt_files)
             processed_files = 0
-            
+            total_lines_fixed = 0
+            files_with_changes = 0
+
             # ประมวลผลแต่ละไฟล์
             for file_path in txt_files:
                 processed_files += 1
                 file_name = file_path.name
-                
+
                 # อัปเดต progress
                 progress = processed_files / total_files
                 progress_bar.progress(progress)
                 status_text.text(f"กำลังประมวลผลไฟล์: {file_name} ({processed_files}/{total_files})")
-                
+
                 # อ่านไฟล์ต้นฉบับ
                 with open(file_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
-                
+
                 # แก้ไขบรรทัดที่มีปัญหา (ถ้ามี)
                 fixed_lines = 0
                 file_errors = errors_by_file.get(str(file_path), [])
@@ -76,7 +87,7 @@ class FileProcessor:
                     if line_index < len(lines):
                         # ใช้ corrected_B ถ้าแก้ไขแล้ว ไม่งั้นใช้ original_B
                         corrected_text = error.get('corrected_B', error['original_B'])
-                        
+
                         # ตรวจสอบว่าได้แก้ไขจริงหรือไม่
                         if corrected_text != error['original_B']:
                             # แก้ไขแล้ว - ใช้ corrected_B
@@ -85,9 +96,13 @@ class FileProcessor:
                         else:
                             # ยังไม่ได้แก้ไข - ใช้ original_B (ไม่นับเป็น fixed)
                             lines[line_index] = corrected_text + '\n'
-                
-                # บันทึกไฟล์ใหม่ในโฟลเดอร์ fix (ทุกไฟล์)
-                output_file = self.fix_dir / file_name
+
+                total_lines_fixed += fixed_lines
+                if fixed_lines > 0:
+                    files_with_changes += 1
+
+                # บันทึกไฟล์ใหม่ในโฟลเดอร์ปลายทาง (ทุกไฟล์)
+                output_file = target_dir / file_name
                 with open(output_file, 'w', encoding='utf-8') as f:
                     f.writelines(lines)
                 
@@ -117,14 +132,21 @@ class FileProcessor:
             # เสร็จสิ้น
             progress_bar.progress(1.0)
             status_text.text("🎉 กระบวนการแก้ไขไฟล์เสร็จสิ้น!")
-            
-            # แสดงรายชื่อไฟล์ที่สร้าง
-            for file_path in txt_files:
-                file_name = file_path.name
-                st.write(f"  ✅ `{file_name}`")
-            
-            st.info("💡 **หมายเหตุ:** ไฟล์ต้นฉบับในโฟลเดอร์ 0-input และ 1-fix ไม่ถูกแก้ไข สามารถใช้งานซ้ำได้")
-        
+
+            # บันทึกผลใน session_state — proof tab อ่านแล้วแสดง persistent banner
+            # พร้อมปุ่ม "เปิดโฟลเดอร์ปลายทาง"
+            st.session_state["_ab_last_fix"] = {
+                "destination": str(target_dir),
+                "files": int(total_files),
+                "files_with_changes": int(files_with_changes),
+                "lines": int(total_lines_fixed),
+            }
+
+            st.info(
+                f"💡 ไฟล์ทั้งหมดถูกเขียนไปที่: `{target_dir}` · "
+                f"ต้นฉบับใน Input/ ไม่ถูกแก้ไข — ใช้งานซ้ำได้"
+            )
+
         except Exception as e:
             st.error(f"❌ เกิดข้อผิดพลาดในการแก้ไขไฟล์: {str(e)}")
             st.exception(e)

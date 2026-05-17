@@ -14,7 +14,7 @@ from . import _helpers as h
 def render(merge_processor, file_processor) -> None:
     """รวมไฟล์ tab — เอาหลายตอนมาต่อกัน"""
     st.markdown(
-        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        '<div class="ink-section-hint">'
         'เอาไฟล์ตอนหลายไฟล์ในโฟลเดอร์มาต่อกัน → ได้ไฟล์รวม เช่น '
         '<code>001.txt</code> + <code>002.txt</code> + ... → <code>Chapter_0001-0005.txt</code>'
         '</div>',

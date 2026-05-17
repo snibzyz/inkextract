@@ -11,10 +11,41 @@ from modules.preferences_manager import preferences_manager
 from . import _helpers as h
 
 
+class _LocalFileShim:
+    """Wrapper รอบ Path ให้มี interface เหมือน UploadedFile ของ Streamlit
+    (.name, .size, .read(), .tell(), .seek())
+
+    ใช้ตอนที่ user เลือก "เลือกจากโฟลเดอร์" — แทนที่จะ upload ผ่าน file_uploader
+    เราหยิบ Path มาห่อให้ใช้กับ separate_processor.separate_files() ได้เลย
+    """
+    __slots__ = ('_path', 'name', 'size', '_pos')
+
+    def __init__(self, path: Path):
+        self._path = path
+        self.name = path.name
+        try:
+            self.size = path.stat().st_size
+        except OSError:
+            self.size = 0
+        self._pos = 0
+
+    def read(self) -> bytes:
+        with open(self._path, 'rb') as f:
+            f.seek(self._pos)
+            data = f.read()
+        return data
+
+    def tell(self) -> int:
+        return self._pos
+
+    def seek(self, p: int) -> None:
+        self._pos = p
+
+
 def render(separate_processor, file_processor) -> None:
     """แยกไฟล์ tab — แยกไฟล์ใหญ่ที่รวมหลายตอนเป็นไฟล์ตอนละไฟล์"""
     st.markdown(
-        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        '<div class="ink-section-hint">'
         'แยกไฟล์ใหญ่ที่มีหลายตอนรวมกัน → ได้ไฟล์ตอนละไฟล์ เช่น '
         '<code>Chapter_001-100.txt</code> → <code>0001.txt</code>, <code>0002.txt</code>, ...'
         '</div>',
@@ -24,51 +55,76 @@ def render(separate_processor, file_processor) -> None:
     prefs = preferences_manager.get_setting("file_processing", "separate_settings", {}) or {}
 
     # ───────────── ขั้นที่ 1 ─────────────
-    h.step_header(1, "เลือกไฟล์ที่จะแยก", "อัปโหลดไฟล์ใหญ่ที่รวมหลายตอน")
-    uploaded_files = st.file_uploader(
-        "เลือกไฟล์ .txt (เลือกได้หลายไฟล์)",
-        type=['txt'],
-        accept_multiple_files=True,
-        key="sep_upload",
-        help="ลากไฟล์มาวาง หรือกด Browse เพื่อเลือกไฟล์จากเครื่อง",
+    h.step_header(1, "เลือกไฟล์ที่จะแยก",
+                  "อัปโหลดจากเครื่อง หรือเลือกโฟลเดอร์ที่มีไฟล์อยู่แล้ว")
+
+    # Source mode: upload vs folder — ยืดหยุ่นเลือกได้ทั้ง 2 ทาง
+    saved_src_mode = prefs.get("source_mode", "upload")
+    src_mode = st.radio(
+        "ที่มาของไฟล์",
+        options=["upload", "folder"],
+        format_func=lambda x: "อัปโหลดไฟล์" if x == "upload" else "เลือกจากโฟลเดอร์",
+        index=0 if saved_src_mode == "upload" else 1,
+        horizontal=True,
+        key="sep_src_mode",
+        label_visibility="collapsed",
     )
+    if src_mode != saved_src_mode:
+        preferences_manager.set_setting("file_processing", "separate_settings",
+            {**prefs, "source_mode": src_mode})
+
+    uploaded_files: list = []
+    if src_mode == "upload":
+        uploaded_files = st.file_uploader(
+            "เลือกไฟล์ .txt (เลือกได้หลายไฟล์)",
+            type=['txt'],
+            accept_multiple_files=True,
+            key="sep_upload",
+            help="ลากไฟล์มาวาง หรือกด Browse เพื่อเลือกไฟล์จากเครื่อง · จะเรียงตามชื่อไฟล์อัตโนมัติ",
+        ) or []
+    else:
+        src_folder_path, _ = h.folder_select(
+            "เลือกโฟลเดอร์ที่มีไฟล์ .txt:",
+            key="sep_src_folder",
+            presets=["Raw", "Input", "Merge", "Separate"],
+            suggested="Raw",
+            help="ระบบจะหยิบไฟล์ .txt ทั้งหมดในโฟลเดอร์ (เรียงตามชื่อ) · ไฟล์ใน sub-folder ไม่ถูกเลือก",
+            saved_value=prefs.get("source_folder"),
+            show_count=True,
+        )
+        if src_folder_path:
+            if str(src_folder_path) != prefs.get("source_folder"):
+                preferences_manager.set_setting("file_processing", "separate_settings",
+                    {**prefs, "source_folder": str(src_folder_path)})
+            txt_paths = sorted(Path(src_folder_path).glob("*.txt"), key=lambda p: p.name)
+            uploaded_files = [_LocalFileShim(p) for p in txt_paths]
+
     if uploaded_files:
-        st.caption(f"อัปโหลดแล้ว **{len(uploaded_files)}** ไฟล์ — "
-                   f"รวม {sum(f.size for f in uploaded_files):,} bytes")
+        total_bytes = sum(getattr(f, 'size', 0) for f in uploaded_files)
+        st.caption(f"เจอ **{len(uploaded_files)}** ไฟล์ — "
+                   f"รวม {total_bytes:,} bytes · เรียงตามชื่อไฟล์แล้ว")
 
     # ───────────── ขั้นที่ 2 ─────────────
-    h.step_header(2, "บอกระบบว่า 'จุดเริ่มตอนใหม่' คือบรรทัดแบบไหน",
+    h.step_header(2, "ระบุเครื่องหมายแยกตอน",
                   "ระบบจะตัดไฟล์ทุกครั้งที่เจอบรรทัดขึ้นต้นด้วยตัวอักษรนี้")
-
-    use_focus = st.checkbox(
-        "ใช้เครื่องหมายแยกตอน",
-        value=bool(prefs.get("focus_keyword", "").strip()),
-        help="ติ๊กเมื่อต้องการให้ระบบแยกตอนตามเครื่องหมายที่กำหนด · ค่าเริ่มต้น: ไม่ติ๊ก (ต้องเปิดเองก่อนใช้)",
-        key="sep_use_focus",
-    )
-
-    if use_focus:
-        col_a, col_b = st.columns([2, 3])
-        with col_a:
-            focus_keyword = st.text_input(
-                "เครื่องหมายขึ้นตอนใหม่",
-                value=prefs.get("focus_keyword", "") or "###",
-                help="เช่น '###' หมายถึงบรรทัดที่ขึ้นต้นด้วย ### = จุดเริ่มตอนใหม่",
-                key="sep_focus",
-            )
-        with col_b:
-            st.markdown(
-                '<div style="background:var(--ink-surface-tint);padding:0.55rem 0.8rem;'
-                'border-radius:0.4rem;font-size:0.85em;color:var(--ink-text-muted);'
-                'margin-top:1.5rem;">'
-                f'<b>ตัวอย่าง:</b> ถ้าใส่ <code>{focus_keyword or "###"}</code> ระบบจะแยกตรงบรรทัดเช่น '
-                f'<code>{focus_keyword or "###"} ตอนที่ 1</code>, <code>{focus_keyword or "###"} ตอนที่ 2</code>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-    else:
-        focus_keyword = ""
-        st.caption("ติ๊กข้างบนเพื่อเปิดใช้เครื่องหมายแยกตอน — ไม่งั้นกดเริ่มไม่ได้")
+    col_a, col_b = st.columns([2, 3])
+    with col_a:
+        focus_keyword = st.text_input(
+            "เครื่องหมายขึ้นตอนใหม่",
+            value=prefs.get("focus_keyword", "") or "###",
+            help="เช่น '###' = บรรทัดที่ขึ้นต้นด้วย ### คือจุดเริ่มตอนใหม่",
+            key="sep_focus",
+        )
+    with col_b:
+        st.markdown(
+            '<div style="background:var(--ink-surface-tint);padding:0.55rem 0.8rem;'
+            'border-radius:0.4rem;font-size:0.85em;color:var(--ink-text-muted);'
+            'margin-top:1.5rem;">'
+            f'<b>ตัวอย่าง:</b> ถ้าใส่ <code>{focus_keyword or "###"}</code> ระบบจะแยกตรงบรรทัดเช่น '
+            f'<code>{focus_keyword or "###"} ตอนที่ 1</code>, <code>{focus_keyword or "###"} ตอนที่ 2</code>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── ตัวเลือกขั้นสูง — ลบข้อความปิดท้ายตอน
     with st.expander("ตัวเลือกขั้นสูง (ลบ end credit เช่น 'จบตอน')", expanded=False):

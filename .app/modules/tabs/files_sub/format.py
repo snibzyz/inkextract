@@ -15,7 +15,7 @@ from . import _helpers as h
 def render(file_processor) -> None:
     """ตรวจรูปแบบ tab — หาไฟล์ที่ชื่อหัวบทไม่ตรงมาตรฐาน"""
     st.markdown(
-        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        '<div class="ink-section-hint">'
         'ตรวจรูปแบบ <b>บรรทัดแรก</b>ของไฟล์ในโฟลเดอร์ — หาไฟล์ที่ชื่อหัวบทไม่ตรงรูปแบบมาตรฐาน'
         '</div>',
         unsafe_allow_html=True,

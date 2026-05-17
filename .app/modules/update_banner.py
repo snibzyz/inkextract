@@ -27,6 +27,37 @@ from updater import check_for_update, download_and_stage, read_version, ROOT_DIR
 
 _STATE_KEY = "_update_banner_state"
 
+# Process-level cache สำหรับผลการเช็ค GitHub release
+#   เก็บที่ระดับโมดูล ไม่ใช่ st.session_state — เพราะ session ของ Streamlit
+#   เริ่มใหม่ทุก refresh ของ browser แต่ Python process เริ่มใหม่เฉพาะ
+#   ตอน Start.bat เปิดใหม่ → ตรงกับเงื่อนไข "เช็คครั้งเดียวต่อ launch"
+_PROCESS_UPDATE_CACHE: dict = {
+    "checked": False,       # background thread ทำงานเสร็จแล้ว
+    "started": False,       # ยิง background thread ไปแล้วหรือยัง
+    "release": None,        # ผลลัพธ์ของ check_for_update — dict | None
+}
+
+
+def _ensure_bg_check_started() -> None:
+    """ยิง background thread ครั้งแรกที่ render() ถูกเรียก — non-blocking.
+
+    หลังจากครั้งแรก ทุก session/rerun แค่อ่านจาก _PROCESS_UPDATE_CACHE
+    ไม่บล็อค render. ผลค้างไปจนกว่า Python process จะเริ่มใหม่ (Start.bat รีลอนช์)
+    """
+    if _PROCESS_UPDATE_CACHE["started"]:
+        return
+    _PROCESS_UPDATE_CACHE["started"] = True
+
+    def _worker() -> None:
+        try:
+            result = check_for_update(timeout=4.0)
+        except Exception:
+            result = None
+        _PROCESS_UPDATE_CACHE["release"] = result
+        _PROCESS_UPDATE_CACHE["checked"] = True
+
+    threading.Thread(target=_worker, daemon=True, name="inkextract-update-check").start()
+
 
 def _launcher_has_restart_loop(launcher: Path) -> bool:
     """True if Start.bat/Start.command has the :main_loop label (v1.3.0+).
@@ -205,20 +236,25 @@ def _render_popup(state: dict, release: dict) -> None:
 
 
 def render() -> None:
-    """Call this near the top of app.py (after page_setup, before main content)."""
+    """Call this near the top of app.py (after page_setup, before main content).
+
+    เช็ค GitHub release ครั้งเดียวต่อ launch (Python process) ผ่าน background thread
+    ในเว็บ session/rerun ต่อๆ ไปจะอ่านจาก process cache ทันที — ไม่บล็อค render
+    """
     state = _get_state()
 
-    # First-time poll (one HTTP request per session)
-    if not state["checked"]:
+    # Kick off background check on the very first render (no-op afterwards)
+    _ensure_bg_check_started()
+
+    # อ่านผลจาก process cache — ถ้ายังเช็คไม่เสร็จ release = None → return ทันที
+    # ครั้งถัดไปที่ user คลิกอะไร rerun จะอ่านค่าใหม่
+    if not state["checked"] and _PROCESS_UPDATE_CACHE["checked"]:
         state["checked"] = True
-        try:
-            state["release"] = check_for_update(timeout=4.0)
-        except Exception:
-            state["release"] = None
+        state["release"] = _PROCESS_UPDATE_CACHE["release"]
 
     release = state["release"]
     if not release and state["phase"] == "idle":
-        # nothing to show
+        # nothing to show — either still checking, no update, or offline
         return
 
     # If we're in a downloading state, refresh progress from worker thread

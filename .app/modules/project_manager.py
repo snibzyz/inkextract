@@ -548,22 +548,34 @@ def _migrate_legacy_workspaces_dir() -> None:
         _save_data(data)
 
 
+_MIGRATION_FLAG_NAME = ".migration_v1_done"
+
+
 def restore_active_on_startup() -> Project:
     """Call once at app startup — restores active project from registry.
 
-    Migrations executed (idempotent):
+    Migrations executed (idempotent + flagged):
       1. Folder `workspaces/` → `projects/` (Phase 2 รอบแรกเคยใช้ชื่อนั้น)
       2. Subdir lowercase numbered (0-input, 1-fix, ...) → PascalCase (Input, Fix, ...)
          รันสำหรับทุกโปรเจกต์ที่ลงทะเบียนไว้ + default workspace
-    """
-    _migrate_legacy_workspaces_dir()
 
-    # Migrate subdir names สำหรับ default workspace + ทุก user project ที่ลงทะเบียน
-    _migrate_legacy_subdir_names(paths.DEFAULT_WORKSPACE_DIR)
-    for proj in list_projects():
-        if proj.is_default:
-            continue
-        _migrate_legacy_subdir_names(proj.root_path())
+    Perf: หลัง migration สำเร็จ เขียน flag `.config/.migration_v1_done`
+    ครั้งถัดไปข้าม migration walk ทั้งชุด — ประหยัด O(N_projects × N_subdirs) iterdir ต่อ startup
+    """
+    flag_file = paths.CONFIG_DIR / _MIGRATION_FLAG_NAME
+    if not flag_file.exists():
+        _migrate_legacy_workspaces_dir()
+        _migrate_legacy_subdir_names(paths.DEFAULT_WORKSPACE_DIR)
+        for proj in list_projects():
+            if proj.is_default:
+                continue
+            _migrate_legacy_subdir_names(proj.root_path())
+        # mark done — กัน startup ครั้งหน้าวิ่ง iterdir อีก
+        try:
+            flag_file.parent.mkdir(parents=True, exist_ok=True)
+            flag_file.write_text("v1", encoding="utf-8")
+        except Exception:
+            pass  # best-effort — ถ้าเขียนไม่ได้ ครั้งหน้าก็จะ re-run migration (idempotent)
 
     project = get_active_project()
     paths.set_active_project_root(

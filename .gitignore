@@ -43,6 +43,9 @@ __pycache__/
 .config/ocr_settings.json
 .config/projects.json
 .config/app.log
+.config/.migration_*
+.config/install_root.txt
+.config/update_check_cache.json
 # .config/exclude.txt → keep (default template)
 
 # ============================================================

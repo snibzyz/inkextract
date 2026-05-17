@@ -14,7 +14,7 @@ from . import _helpers as h
 def render(file_processor) -> None:
     """สร้างไฟล์เปล่า tab — สร้าง template หลายๆ ไฟล์พร้อมกัน"""
     st.markdown(
-        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        '<div class="ink-section-hint">'
         'สร้างไฟล์ .txt เปล่าหลายๆ ไฟล์พร้อมกัน เผื่อเตรียมเขียน เช่น '
         '<code>Chapter_0001.txt</code> ถึง <code>Chapter_0010.txt</code>'
         '</div>',

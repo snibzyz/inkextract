@@ -27,6 +27,10 @@ _GLOBAL_CSS = f"""
 <style>
 /* ============================================================
 * Sarabun font + Material Symbols (icons แทน emoji)
+* NOTE: @import ใน <style> เป็น render-blocking — รู้ว่าช้ากว่า <link>
+* แต่ใส่ <link> นอก <style> ผ่าน st.markdown แล้ว Streamlit markdown
+* จะ escape `<style>` ที่ตามมา → CSS ทั้งก้อนกลายเป็น text ไม่โหลด
+* (ทดสอบแล้วบั๊กจริง — revert กลับมาใช้ @import)
 * ============================================================ */
 @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap');
 /* Streamlit ใช้ Material Symbols Rounded เป็นหลัก — ต้อง import ก่อน Outlined */
@@ -655,6 +659,87 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     background: var(--ink-surface-tint-strong); color: var(--ink-orange-dark);
     font-size: 0.8rem; font-weight: 600; margin-right: 6px;
     border: 1px solid var(--ink-border-orange);
+}}
+
+/* ============================================================
+* Section label — มาตรฐานเดียวสำหรับหัวข้อย่อยทั่วทั้งแอป
+*   ใช้แทน ad-hoc <div style="font-weight:600;color:..."> ที่กระจัดกระจาย
+*   3 size variant: lg (1.05rem h3-like) · md (default 0.95rem) · sm (0.85rem)
+*   Hint = บรรทัดอธิบายใต้หัวข้อ
+*
+* Markdown #### (h4) / ### (h3) / ## (h2) → จัดให้ตรงกัน
+*   Streamlit h4 default ดูเล็ก/อ่อน — บังคับ color = --ink-text-strong + weight 700
+*   เพื่อให้ทุกหัวข้อในแอป (ไม่ว่าจะเขียนผ่าน markdown หรือ HTML class) อ่านง่ายเหมือนกัน
+* ============================================================ */
+.ink-section-label {{
+    display: flex; align-items: center; gap: 0.45rem;
+    margin: 0.9rem 0 0.45rem;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--ink-text-strong);
+    line-height: 1.3;
+}}
+.ink-section-label.lg {{ font-size: 1.05rem; margin: 1rem 0 0.55rem; }}
+.ink-section-label.sm {{ font-size: 0.85rem; font-weight: 600; margin: 0.7rem 0 0.35rem; }}
+.ink-section-label .micon {{
+    font-size: 1.15em;
+    color: var(--ink-orange-dark);
+    flex-shrink: 0;
+}}
+.ink-section-label .count {{
+    font-weight: 500;
+    color: var(--ink-text-muted);
+    font-size: 0.92em;
+    margin-left: 0.15rem;
+}}
+.ink-section-hint {{
+    margin: -0.15rem 0 0.6rem;
+    font-size: 0.85rem;
+    color: var(--ink-text-muted);
+    line-height: 1.45;
+}}
+
+/* Streamlit markdown heading override — ให้ทุก # heading ใช้สีและน้ำหนักมาตรฐาน */
+[data-testid="stMarkdownContainer"] h2 {{
+    color: var(--ink-text-strong) !important;
+    font-weight: 700 !important;
+    font-size: 1.25rem !important;
+    margin: 1.1rem 0 0.55rem !important;
+    padding-bottom: 0 !important;
+    border-bottom: none !important;
+    line-height: 1.3 !important;
+}}
+[data-testid="stMarkdownContainer"] h3 {{
+    color: var(--ink-text-strong) !important;
+    font-weight: 700 !important;
+    font-size: 1.1rem !important;
+    margin: 1rem 0 0.5rem !important;
+    padding-bottom: 0 !important;
+    border-bottom: none !important;
+    line-height: 1.3 !important;
+}}
+[data-testid="stMarkdownContainer"] h4 {{
+    color: var(--ink-text-strong) !important;
+    font-weight: 700 !important;
+    font-size: 1rem !important;
+    margin: 0.9rem 0 0.45rem !important;
+    padding-bottom: 0 !important;
+    border-bottom: none !important;
+    line-height: 1.3 !important;
+}}
+[data-testid="stMarkdownContainer"] h5,
+[data-testid="stMarkdownContainer"] h6 {{
+    color: var(--ink-text-strong) !important;
+    font-weight: 700 !important;
+    font-size: 0.92rem !important;
+    margin: 0.75rem 0 0.4rem !important;
+    padding-bottom: 0 !important;
+    border-bottom: none !important;
+}}
+/* Bold inline text (**text**) — slight color bump */
+[data-testid="stMarkdownContainer"] strong {{
+    color: var(--ink-text-strong);
+    font-weight: 700;
 }}
 </style>
 """

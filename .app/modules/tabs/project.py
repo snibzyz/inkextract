@@ -24,6 +24,10 @@ def _reset_cached_processors() -> None:
     for k in _PROCESSOR_KEYS:
         if k in st.session_state:
             del st.session_state[k]
+    # ล้าง fix result banner ของทั้ง AB / Normal mode — กันโชว์ path เก่าของ project ก่อนสลับ
+    for k in ("_nm_last_fix", "_ab_last_fix"):
+        if k in st.session_state:
+            del st.session_state[k]
     try:
         from modules.config import app_config
         app_config.reload_paths()
@@ -43,15 +47,16 @@ def render_active_bar() -> None:
     tag_html = (
         '<span class="ink-active-tag">เริ่มต้น</span>' if active.is_default else ''
     )
+    # ห้าม indent บรรทัด HTML — Streamlit markdown จะตีความ
+    # บรรทัด indent 4+ spaces เป็น "indented code block" แล้ว escape ตัว `<code>`
+    # กลายเป็นข้อความ raw ทั้งหมด
     st.markdown(
-        f"""
-        <div class="ink-active-bar">
-            <span class="ink-active-label">โปรเจกต์ที่ใช้งาน:</span>
-            <span class="ink-active-name">{active.name}</span>
-            {tag_html}
-            <code title="{actual_path}">{actual_path}</code>
-        </div>
-        """,
+        f'<div class="ink-active-bar">'
+        f'<span class="ink-active-label">โปรเจกต์ที่ใช้งาน:</span>'
+        f'<span class="ink-active-name">{active.name}</span>'
+        f'{tag_html}'
+        f'<code title="{actual_path}">{actual_path}</code>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -98,7 +103,13 @@ def _render_install_root_section() -> None:
 
         # Override picker
         st.markdown("---")
-        st.markdown("**เปลี่ยน install root (เลือกเอง)**")
+        st.markdown(
+            '<div class="ink-section-label">'
+            '<span class="micon">swap_horiz</span>'
+            '<span>เปลี่ยน install root (เลือกเอง)</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
         if override_active:
             current_override = override_file.read_text(encoding='utf-8').strip()
@@ -248,9 +259,11 @@ def _render_project_picker(projects, active) -> None:
 
     # List of projects
     st.markdown(
-        f"<div style='font-size:0.85rem; color:var(--ink-text-muted); "
-        f"margin: 0.75rem 0 0.4rem;'>"
-        f"โปรเจกต์ทั้งหมด ({len(projects)})</div>",
+        f'<div class="ink-section-label sm">'
+        f'<span class="micon">list</span>'
+        f'<span>โปรเจกต์ทั้งหมด</span>'
+        f'<span class="count">({len(projects)})</span>'
+        f'</div>',
         unsafe_allow_html=True,
     )
     for proj in projects:
@@ -322,7 +335,13 @@ def _render_active_project_settings(active) -> None:
         expanded=False,
     ):
         # Subfolders summary
-        st.markdown("**โฟลเดอร์ย่อย**")
+        st.markdown(
+            '<div class="ink-section-label">'
+            '<span class="micon">folder_copy</span>'
+            '<span>โฟลเดอร์ย่อย</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         subdirs = [
             ("Raw", "ไฟล์ raw ต้นฉบับจีน"),
             ("Input", "ไฟล์แปลตั้งต้น (`[A]`/`[B]`)"),
@@ -364,7 +383,13 @@ def _render_active_project_settings(active) -> None:
         if not active.is_default:
             st.markdown("---")
             # Rename
-            st.markdown("**เปลี่ยนชื่อโปรเจกต์**")
+            st.markdown(
+                '<div class="ink-section-label">'
+                '<span class="micon">edit</span>'
+                '<span>เปลี่ยนชื่อโปรเจกต์</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
             with st.form(f"rename_project_form_{active.id}", clear_on_submit=False):
                 renamed = st.text_input(
                     "ชื่อใหม่",
@@ -392,7 +417,13 @@ def _render_active_project_settings(active) -> None:
 
             st.markdown("---")
             # Delete
-            st.markdown("**ลบโปรเจกต์**")
+            st.markdown(
+                '<div class="ink-section-label">'
+                '<span class="micon" style="color:var(--ink-warn);">delete_forever</span>'
+                '<span>ลบโปรเจกต์</span>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
             st.warning(
                 f"กำลังจะลบ **{active.name}** — หลังลบจะกลับไปใช้"
                 "โปรเจกต์เริ่มต้นโดยอัตโนมัติ"
@@ -437,9 +468,10 @@ def render() -> None:
 
     # 2. รายการโปรเจกต์ + สร้างใหม่
     st.markdown(
-        '<div style="margin: 0.6rem 0 0.4rem; font-size: 0.95rem; '
-        'font-weight: 600; color: var(--ink-text);">'
-        'เลือก / สร้างโปรเจกต์</div>',
+        '<div class="ink-section-label lg">'
+        '<span class="micon">apps</span>'
+        '<span>เลือก / สร้างโปรเจกต์</span>'
+        '</div>',
         unsafe_allow_html=True,
     )
     _render_project_picker(projects, active)

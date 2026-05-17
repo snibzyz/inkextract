@@ -30,7 +30,7 @@ _SUPPORTED_PAIRS = [
 def render(md_converter, docx_converter, file_processor) -> None:
     """แปลงไฟล์ tab — เปลี่ยนนามสกุลระหว่าง DOCX / TXT / MD"""
     st.markdown(
-        '<div style="margin-bottom:0.6rem;color:var(--ink-text-muted);font-size:0.95em;">'
+        '<div class="ink-section-hint">'
         'เปลี่ยนนามสกุลไฟล์ระหว่าง <code>DOCX</code> (Word), <code>TXT</code>, '
         '<code>MD</code> (Markdown)'
         '</div>',

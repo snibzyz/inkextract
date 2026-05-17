@@ -23,6 +23,20 @@ from modules import update_banner
 ui.page_setup(page_title=ui.APP_NAME)
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def _scan_stats(input_dir: str, fix_dir: str, clean_dir: str) -> tuple[int, int, int]:
+    """นับ .txt ใน 3 โฟลเดอร์ + cache 30 วินาที (event-driven via TTL).
+
+    เปลี่ยน path = cache key ใหม่ → สลับ project ก็เห็นค่าใหม่ทันที.
+    """
+    def _count(d: str) -> int:
+        p = Path(d)
+        if not p.exists():
+            return 0
+        return sum(1 for _ in p.glob("*.txt"))
+    return _count(input_dir), _count(fix_dir), _count(clean_dir)
+
+
 def main():
     # คืนค่าโปรเจกต์ที่ใช้งานล่าสุดจาก registry (idempotent)
     project_manager.restore_active_on_startup()
@@ -64,9 +78,13 @@ def main():
     
     # Quick Stats — collapsed by default (progressive disclosure)
     # Psychology: stats เป็น "อยากดูเมื่ออยากดู" — ไม่ควรกินพื้นที่ตลอด
-    input_files = len(list(proofreader.input_dir.glob("*.txt"))) if proofreader.input_dir.exists() else 0
-    fix_files = len(list(file_processor.fix_dir.glob("*.txt"))) if file_processor.fix_dir.exists() else 0
-    clean_files = len(list(file_processor.clean_dir.glob("*.txt"))) if file_processor.clean_dir.exists() else 0
+    # Perf: cache 30s + key by path string → rerun ติดๆ กันไม่สแกน I/O ซ้ำ
+    #       ถ้าโฟลเดอร์มี 500 ไฟล์ ประหยัด ~1500 file stat ต่อ rerun
+    input_files, fix_files, clean_files = _scan_stats(
+        str(proofreader.input_dir),
+        str(file_processor.fix_dir),
+        str(file_processor.clean_dir),
+    )
     error_count = len(proofreader.found_errors)
 
     summary = (
