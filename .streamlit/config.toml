@@ -1,12 +1,31 @@
 # INKEXTRACT — Streamlit theme config
 # Single source of truth ของสี primary (amber) — ตรงกับ ui.py ORANGE_PRIMARY
 # และ INKREALM brand color
+#
+# Streamlit 1.45+ รองรับ [theme.light] / [theme.dark] override
+#   → คืน toggle "Choose app theme" ในเมนู Settings (ต้องเปิด toolbarMode=developer)
+
 [theme]
+# default base = ตามระบบ (user toggle ได้เอง)
 primaryColor = "#F59E0B"
+font = "sans serif"
+
+[theme.light]
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#FAFAFA"
 textColor = "#212121"
-font = "sans serif"
+
+[theme.dark]
+# amber-400 (brighter) อ่านง่ายบนพื้นเข้ม — ตรงกับ token --ink-orange ใน dark mode
+primaryColor = "#FBBF24"
+backgroundColor = "#1E2129"
+secondaryBackgroundColor = "#262730"
+textColor = "#FAFAFA"
+
+[client]
+# คืนเมนู "Settings → Choose app theme" ในแถบ kebab (☰)
+# default "minimal" จะซ่อน Settings ไป → ผู้ใช้หา toggle dark mode ไม่เจอ
+toolbarMode = "developer"
 
 [server]
 runOnSave = false

@@ -30,14 +30,14 @@ def _render_stepper(active_idx: int, done_until: int = -1) -> None:
     for i, label in enumerate(_STEP_LABELS):
         n = i + 1
         if i <= done_until:
-            bg, color, border = "var(--ink-success)", "white", "var(--ink-success)"
+            bg, color, border = "var(--ink-success)", "var(--ink-on-primary)", "var(--ink-success)"
             num_html = "&check;"
             label_color = "var(--ink-success)"
             label_weight = "600"
         elif i == active_idx:
-            bg, color, border = "var(--ink-orange)", "white", "var(--ink-orange)"
+            bg, color, border = "var(--ink-orange)", "var(--ink-on-primary)", "var(--ink-orange)"
             num_html = str(n)
-            label_color = "var(--ink-orange-dark)"
+            label_color = "var(--ink-accent-strong)"
             label_weight = "700"
         else:
             bg, color = "var(--ink-surface)", "var(--ink-text-muted)"
@@ -717,12 +717,12 @@ def render(proofreader, file_processor) -> None:
             <div style="background: var(--ink-surface-tint); padding: 2rem;
                         border-radius: var(--ink-radius-xl); text-align: center;
                         border: 2px dashed var(--ink-border-orange); color: var(--ink-text);">
-                <h4 style="margin: 0; color: var(--ink-orange-dark);">เริ่มต้นการทำงาน</h4>
+                <h4 style="margin: 0; color: var(--ink-accent-strong);">เริ่มต้นการทำงาน</h4>
                 <p style="margin: 1rem 0 0 0; color: var(--ink-text-muted); font-size: 1.05rem;">
                     วางไฟล์ .txt ลงในโฟลเดอร์
                     <code style="background: var(--ink-surface-2); padding: 2px 8px;
                                  border-radius: var(--ink-radius-sm);
-                                 color: var(--ink-orange-dark);">0-input</code>
+                                 color: var(--ink-accent-strong);">0-input</code>
                     แล้วกดปุ่ม <strong>เริ่มวิเคราะห์</strong>
                 </p>
             </div>
@@ -742,7 +742,7 @@ def render(proofreader, file_processor) -> None:
                     border-radius: var(--ink-radius-lg);
                     border-left: 4px solid var(--ink-orange);
                     margin-bottom: 1rem; color: var(--ink-text);">
-            <h5 style="margin: 0; color: var(--ink-orange-dark);">
+            <h5 style="margin: 0; color: var(--ink-accent-strong);">
                 โหมดทั่วไป (สแกนทุกบรรทัด)
             </h5>
             <p style="margin: 0.4rem 0 0 0; color: var(--ink-text-muted); font-size: 0.9em;">
@@ -1125,7 +1125,7 @@ def render(proofreader, file_processor) -> None:
             <div style="background: var(--ink-surface-tint); padding: 2rem;
                         border-radius: var(--ink-radius-xl); text-align: center;
                         border: 2px dashed var(--ink-border-orange); color: var(--ink-text);">
-                <h4 style="margin: 0; color: var(--ink-orange-dark);">เริ่มต้นการทำงาน</h4>
+                <h4 style="margin: 0; color: var(--ink-accent-strong);">เริ่มต้นการทำงาน</h4>
                 <p style="margin: 1rem 0 0 0; color: var(--ink-text-muted); font-size: 1.05rem;">
                     เลือกโฟลเดอร์ต้นทาง + เงื่อนไขการตรวจ แล้วกด
                     <strong>วิเคราะห์โหมดทั่วไป</strong>
@@ -1156,7 +1156,7 @@ def render(proofreader, file_processor) -> None:
                     border-radius: var(--ink-radius-lg);
                     border-left: 4px solid var(--ink-orange);
                     margin-bottom: 1.25rem; color: var(--ink-text);">
-            <h4 style="margin: 0; color: var(--ink-orange-dark);">
+            <h4 style="margin: 0; color: var(--ink-accent-strong);">
                 ตรวจหลายโฟลเดอร์ (ไวขึ้น)
             </h4>
             <p style="margin: 0.5rem 0 0 0; color: var(--ink-text-muted);">

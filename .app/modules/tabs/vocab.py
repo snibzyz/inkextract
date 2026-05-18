@@ -39,7 +39,7 @@ _VOCAB_CSS = """
 }
 .vc-stat .val {
     font-size: 1.7em; font-weight: 800;
-    color: var(--ink-orange-dark); line-height: 1.05;
+    color: var(--ink-accent-strong); line-height: 1.05;
     margin: 6px 0 4px;
 }
 .vc-stat .hint { font-size: 0.78em; color: var(--ink-text-muted); line-height: 1.4; }
@@ -57,7 +57,7 @@ _VOCAB_CSS = """
     border-bottom: 2px solid var(--ink-border-orange);
 }
 .vc-step .num {
-    background: var(--ink-orange); color: white;
+    background: var(--ink-orange); color: var(--ink-on-primary);
     width: 30px; height: 30px;
     border-radius: var(--ink-radius-pill);
     display: inline-flex; align-items: center; justify-content: center;
@@ -90,7 +90,7 @@ _VOCAB_CSS = """
     border-color: var(--ink-orange-light);
 }
 .vc-preset .ptitle {
-    font-weight: 700; color: var(--ink-orange-dark);
+    font-weight: 700; color: var(--ink-accent-strong);
     font-size: 1.08em; line-height: 1.3;
 }
 .vc-preset .pdesc {
@@ -148,7 +148,7 @@ _VOCAB_CSS = """
     font-size: 1.1em; color: var(--ink-text);
 }
 .vc-result .count b {
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     font-size: 1.5em; font-weight: 800; margin: 0 4px;
 }
 .vc-result .file {
@@ -157,7 +157,7 @@ _VOCAB_CSS = """
     padding: 6px 12px;
     border-radius: var(--ink-radius-md);
     border: 1px solid var(--ink-border-orange);
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     font-size: 0.92em; font-weight: 600;
 }
 .vc-result.empty {
@@ -178,7 +178,7 @@ _VOCAB_CSS = """
     margin-top: 1rem;
     color: var(--ink-text);
 }
-.vc-empty h4 { margin: 0; color: var(--ink-orange-dark); font-size: 1.35rem; }
+.vc-empty h4 { margin: 0; color: var(--ink-accent-strong); font-size: 1.35rem; }
 .vc-empty p { margin: 0.5rem 0 1.25rem; color: var(--ink-text-muted); font-size: 0.95rem; }
 .vc-empty .examples {
     background: var(--ink-surface);
@@ -193,7 +193,7 @@ _VOCAB_CSS = """
     margin-bottom: 8px;
     text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;
 }
-.vc-empty .examples .sep { color: var(--ink-orange-dark); font-weight: 700; }
+.vc-empty .examples .sep { color: var(--ink-accent-strong); font-weight: 700; }
 </style>
 """
 

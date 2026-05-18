@@ -113,6 +113,12 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     --ink-orange-dark: {ORANGE_DARK};
     --ink-orange-light: {ORANGE_LIGHT};
 
+    /* ── Accent text — สำหรับข้อความบน amber-tint surface ── */
+    /* แยกจาก --ink-orange-dark เพราะ dark mode ต้องสว่างกว่าเพื่อ contrast บน tint */
+    --ink-accent-strong: {ORANGE_DARK};   /* light: amber-600 — บน FFF8E1/FFF3E0 ได้ 3:1 (ตามแบรนด์เดิม) */
+    /* ── Text/icon บน amber button (solid primary) — WCAG AA target ── */
+    --ink-on-primary: #FFFFFF;            /* light: white (brand standard — ยอมแลก WCAG เพื่อความเข้ม) */
+
     /* ── Light theme (default) ── */
     --ink-surface: #FFFFFF;
     --ink-surface-2: #FAFAFA;
@@ -139,21 +145,26 @@ html body .stApp .micon.xl {{ font-size: 2.2em; }}
     --ink-shadow-lg: 0 8px 18px rgba(245,158,11,0.18);
 }}
 
-/* ── Dark theme tokens — apply เฉพาะเมื่อ Streamlit toggle dark
- * **ห้ามใช้ @media (prefers-color-scheme: dark)** เพราะ Streamlit theme config
- * ใน .streamlit/config.toml force light theme ไว้แล้ว → OS dark pref จะทำให้
- * tokens dark แต่ Streamlit render bg ขาว → text หาย/อ่านไม่ออก
- * Detect via: Streamlit class .stApp[data-theme=dark], html.dark, color-scheme
+/* ── Dark theme tokens — activate เฉพาะเมื่อ JS observer set html[data-theme="dark"] ──
+ *
+ * เคยใช้ @media (prefers-color-scheme: dark) แต่พังหนัก:
+ *   OS=dark + user pick "Light" ใน Streamlit menu → Streamlit ทำ bg=ขาว แต่
+ *   @media รัน → tokens เป็น dark → text ขาวบน bg ขาว = อ่านไม่ออก
+ *
+ * Solution: ตัด @media ออก ให้ JS observer (_DARK_DETECT_HTML) อ่าน bg จริง
+ *   ของ .stApp แล้ว set/remove html[data-theme="dark"] = single source of truth
+ *   (config.toml + native menu + OS pref → ผ่าน Streamlit → bg เปลี่ยน → JS sync)
  * ── */
-html.dark,
 html[data-theme="dark"],
-body[data-theme="dark"],
-.stApp[data-theme="dark"],
-[data-theme="dark"],
-html[style*="color-scheme: dark"] {{
+html[data-theme="dark"] :root,
+[data-theme="dark"] {{
     --ink-orange: #FBBF24;
     --ink-orange-dark: #F59E0B;
     --ink-orange-light: #FCD34D;
+    /* accent text — สว่างขึ้นเพื่อ contrast บน amber-tint (composite บน dark surface) */
+    --ink-accent-strong: #FCD34D;     /* amber-300 — ตัด tint ได้ ~6:1+ */
+    /* button-text บน amber bg — dark fg ให้ contrast 9:1+ แทน white (1.67:1) */
+    --ink-on-primary: #1E2129;
     --ink-surface: #1E2129;
     --ink-surface-2: #262730;
     --ink-surface-tint: rgba(251,191,36,0.10);
@@ -161,8 +172,8 @@ html[style*="color-scheme: dark"] {{
     --ink-surface-input: #2A2D36;
     --ink-text: #FAFAFA;
     --ink-text-strong: #FFFFFF;
-    --ink-text-muted: #C7B9B0;
-    --ink-text-faint: #8B8B8B;
+    --ink-text-muted: #D4C5BB;        /* bump จาก #C7B9B0 ให้ 5:1+ บน dark surface */
+    --ink-text-faint: #B0B0B0;        /* bump จาก #8B8B8B (4.36) → #B0B0B0 (6+) */
     --ink-border: #3D434B;
     --ink-border-soft: #2E333B;
     --ink-border-orange: #FCD34D;
@@ -188,21 +199,40 @@ html[style*="color-scheme: dark"] {{
     line-height: 1.3 !important;
     transition: all 0.15s !important;
 }}
-.stButton > button[kind="primary"], .stDownloadButton > button[kind="primary"],
+/* Primary button family — Streamlit 1.57 ใช้ data-testid ต่างกันต่อ context:
+ *   stBaseButton-primary          → st.button(type="primary")
+ *   stBaseButton-primaryFormSubmit → st.form_submit_button(type="primary")
+ *   kind="primary" attribute       → fallback (เก่า)
+ * ใช้ data-testid ครอบทั้ง 2 + universal child selector กัน Streamlit override <p> ภายใน */
+[data-testid="stBaseButton-primary"],
+[data-testid="stBaseButton-primaryFormSubmit"],
+.stButton > button[kind="primary"],
+.stDownloadButton > button[kind="primary"],
 .stFormSubmitButton > button[kind="primary"] {{
     background: var(--ink-orange) !important;
-    color: white !important;
+    color: var(--ink-on-primary) !important;  /* light=white · dark=#1E2129 */
     border: 1px solid var(--ink-orange-dark) !important;
 }}
+[data-testid="stBaseButton-primary"] *,
+[data-testid="stBaseButton-primaryFormSubmit"] *,
+.stButton > button[kind="primary"] *,
+.stDownloadButton > button[kind="primary"] *,
+.stFormSubmitButton > button[kind="primary"] * {{
+    color: var(--ink-on-primary) !important;
+}}
+[data-testid="stBaseButton-primary"]:hover,
+[data-testid="stBaseButton-primaryFormSubmit"]:hover,
 .stButton > button[kind="primary"]:hover {{
     background: var(--ink-orange-dark) !important;
     border-color: var(--ink-orange-dark) !important;
+    color: var(--ink-on-primary) !important;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(245,124,0,0.30);
 }}
-.stButton > button[kind="secondary"]:hover {{
+.stButton > button[kind="secondary"]:hover,
+[data-testid="stBaseButton-secondary"]:hover {{
     border-color: var(--ink-orange) !important;
-    color: var(--ink-orange-dark) !important;
+    color: var(--ink-accent-strong) !important;
 }}
 
 /* Tabs — main + sub tabs ใหญ่ขึ้น อ่านง่าย */
@@ -211,7 +241,7 @@ html[style*="color-scheme: dark"] {{
     height: 3px !important;
 }}
 .stTabs [aria-selected="true"] {{
-    color: var(--ink-orange-dark) !important;
+    color: var(--ink-accent-strong) !important;
 }}
 .stTabs [data-baseweb="tab"] {{
     font-weight: 600 !important;
@@ -237,7 +267,7 @@ html[style*="color-scheme: dark"] {{
 
 /* Progress + metric */
 .stProgress > div > div > div > div {{ background-color: var(--ink-orange); }}
-[data-testid="stMetricValue"] {{ color: var(--ink-orange-dark); }}
+[data-testid="stMetricValue"] {{ color: var(--ink-accent-strong); }}
 
 /* st.pills + st.segmented_control — pill-shaped, orange-active */
 [data-testid="stPills"] button, [data-testid="stSegmentedControl"] button {{
@@ -313,12 +343,12 @@ li[role="option"]:hover {{
 }}
 li[role="option"][aria-selected="true"] {{
     background: var(--ink-orange) !important;
-    color: white !important;
+    color: var(--ink-on-primary) !important;
     font-weight: 600 !important;
 }}
 li[role="option"][aria-selected="true"] > div,
 li[role="option"][aria-selected="true"] > div > div {{
-    color: white !important;
+    color: var(--ink-on-primary) !important;
 }}
 
 /* Kill react-window sizer heights — let li's stack naturally
@@ -413,12 +443,17 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
 /* Browse button inside dropzone — ส้ม + uniform กับปุ่มอื่น */
 [data-testid="stFileUploaderDropzone"] button {{
     background: var(--ink-orange) !important;
-    color: white !important;
+    color: var(--ink-on-primary) !important;
     border: 1px solid var(--ink-orange-dark) !important;
     font-weight: 600 !important;
 }}
+[data-testid="stFileUploaderDropzone"] button p,
+[data-testid="stFileUploaderDropzone"] button span {{
+    color: var(--ink-on-primary) !important;
+}}
 [data-testid="stFileUploaderDropzone"] button:hover {{
     background: var(--ink-orange-dark) !important;
+    color: var(--ink-on-primary) !important;
 }}
 /* "Drag and drop file here" + "200MB per file" instructions */
 [data-testid="stFileUploaderDropzoneInstructions"] {{
@@ -508,12 +543,12 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     color: var(--ink-text-muted); font-size: 0.8rem;
 }}
 .ink-active-bar .ink-active-name {{
-    font-weight: 700; color: var(--ink-orange-dark);
+    font-weight: 700; color: var(--ink-accent-strong);
 }}
 .ink-active-bar .ink-active-tag {{
     font-size: 0.72rem; padding: 1px 7px; border-radius: 999px;
     background: var(--ink-surface-tint-strong);
-    color: var(--ink-orange-dark); font-weight: 600;
+    color: var(--ink-accent-strong); font-weight: 600;
 }}
 .ink-active-bar code {{
     margin-left: auto; font-family: 'Consolas','Courier New',monospace;
@@ -540,7 +575,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     display: flex; align-items: center; gap: 0.5rem;
     margin-bottom: 0.4rem;
     font-size: 0.78rem;
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     text-transform: uppercase;
     letter-spacing: 0.8px;
     font-weight: 700;
@@ -549,7 +584,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
 .ink-active-card-name {{
     font-size: 1.6rem;
     font-weight: 800;
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     line-height: 1.15;
     margin-bottom: 0.55rem;
 }}
@@ -566,7 +601,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
 .ink-active-card-path .micon {{
-    font-size: 1em; color: var(--ink-orange-dark); flex-shrink: 0;
+    font-size: 1em; color: var(--ink-accent-strong); flex-shrink: 0;
 }}
 .ink-active-card-meta {{
     margin-top: 0.45rem;
@@ -608,7 +643,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     line-height: 1.2;
 }}
 .ink-proj-row.active .ink-proj-name {{
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
 }}
 .ink-proj-path {{
     font-family: 'Consolas','Courier New',monospace;
@@ -625,7 +660,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
 .ink-proj-active-badge {{
     display: inline-flex; align-items: center; gap: 0.35rem;
     padding: 0.55rem 0.8rem;
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     font-weight: 700;
     font-size: 0.85rem;
     background: var(--ink-surface-tint);
@@ -648,7 +683,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
     background: var(--ink-surface);
     color: var(--ink-text);
 }}
-.ink-section h3 {{ margin: 0 0 0.25rem; color: var(--ink-orange-dark); font-size: 1.1rem; }}
+.ink-section h3 {{ margin: 0 0 0.25rem; color: var(--ink-accent-strong); font-size: 1.1rem; }}
 .ink-section p.ink-desc {{ color: var(--ink-text-muted); font-size: 0.85rem; margin: 0 0 0.6rem; }}
 
 /* ============================================================
@@ -656,7 +691,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
 * ============================================================ */
 .ink-chip {{
     display: inline-block; padding: 2px 8px; border-radius: 999px;
-    background: var(--ink-surface-tint-strong); color: var(--ink-orange-dark);
+    background: var(--ink-surface-tint-strong); color: var(--ink-accent-strong);
     font-size: 0.8rem; font-weight: 600; margin-right: 6px;
     border: 1px solid var(--ink-border-orange);
 }}
@@ -683,7 +718,7 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
 .ink-section-label.sm {{ font-size: 0.85rem; font-weight: 600; margin: 0.7rem 0 0.35rem; }}
 .ink-section-label .micon {{
     font-size: 1.15em;
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     flex-shrink: 0;
 }}
 .ink-section-label .count {{
@@ -745,10 +780,76 @@ div[data-baseweb="popover"] [role="listbox"]::-webkit-scrollbar-thumb:hover {{
 """
 
 
+# JS observer — sync `<html data-theme="dark">` กับ background ที่ Streamlit render จริง
+# ครอบคลุม 3 case: (1) OS dark pref, (2) manual toggle ใน Settings menu, (3) prefs change live
+# Why: CSS `@media (prefers-color-scheme: dark)` คุม OS pref ได้ แต่ manual toggle
+# ของ Streamlit เปลี่ยน body bg โดยไม่ trigger media query → ต้อง observe เอง
+# How: st.markdown strips <script>/<img onerror> → ใช้ components.v1.html (iframe)
+# แล้ว access window.parent.document เพื่อแก้ host page
+_DARK_DETECT_HTML = """
+<script>
+(function(){
+    var w = window.parent || window;
+    var doc = w.document;
+    if (w.__inkThemeObserverInstalled) return;
+    w.__inkThemeObserverInstalled = true;
+
+    function isDarkBg(rgb) {
+        var m = rgb && rgb.match(/\\d+/g);
+        if (!m || m.length < 3) return false;
+        var r = +m[0], g = +m[1], b = +m[2];
+        var lum = 0.2126*r + 0.7152*g + 0.0722*b;
+        return lum < 128;
+    }
+    var lastBg = '';
+    function sync() {
+        var app = doc.querySelector('[data-testid="stApp"]') || doc.querySelector('.stApp');
+        if (!app) return;
+        var bg = doc.defaultView.getComputedStyle(app).backgroundColor;
+        if (bg === lastBg) return;  // unchanged — skip work
+        lastBg = bg;
+        var dark = isDarkBg(bg);
+        var h = doc.documentElement;
+        if (dark) {
+            if (h.getAttribute('data-theme') !== 'dark') h.setAttribute('data-theme','dark');
+        } else {
+            if (h.getAttribute('data-theme') === 'dark') h.removeAttribute('data-theme');
+        }
+    }
+    sync();
+    // MutationObserver จับการ inject <style> emotion ของ Streamlit ที่เปลี่ยน theme
+    try {
+        var mo = new w.MutationObserver(sync);
+        mo.observe(doc.head, {childList: true, subtree: true});
+        mo.observe(doc.body, {attributes: true, attributeFilter: ['style', 'class']});
+    } catch(e){}
+    try { w.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sync); } catch(e){}
+    // Fast poll (cheap — single getComputedStyle call)
+    w.setInterval(sync, 200);
+})();
+</script>
+"""
+
+
 def apply_theme() -> None:
     """ใส่ CSS theme ระดับ global — ต้องเรียกทุก rerun
-    (Streamlit ลบ markdown ที่ไม่ถูก emit ในรอบ rerun ใหม่)"""
+    (Streamlit ลบ markdown ที่ไม่ถูก emit ในรอบ rerun ใหม่)
+    JS observer ใส่ผ่าน st.iframe → iframe ที่ access window.parent.document ได้
+    (เดิมใช้ components.v1.html — deprecated หลัง 2026-06-01 → ย้าย st.iframe)
+    """
     st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+    # height=0 → iframe มองไม่เห็น แต่ JS ทำงาน + access parent doc ได้
+    try:
+        st.iframe(_DARK_DETECT_HTML, height=0)
+    except AttributeError:
+        # Streamlit < 1.55 — fallback ใช้ components.v1.html
+        try:
+            from streamlit.components.v1 import html as _components_html
+            _components_html(_DARK_DETECT_HTML, height=0)
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 def _resolve_logo_path() -> Optional[str]:
@@ -862,7 +963,7 @@ def step_header(step_num: int, total: int, title: str, description: Optional[str
         f"""
         <div style="display:flex;align-items:center;gap:0.7rem;margin:1.25rem 0 0.6rem;">
             <div style="display:inline-flex;width:32px;height:32px;border-radius:50%;
-                        background:var(--ink-orange);color:white;
+                        background:var(--ink-orange);color:var(--ink-on-primary);
                         align-items:center;justify-content:center;
                         font-weight:700;font-size:14px;flex-shrink:0;
                         box-shadow:var(--ink-shadow-sm);">
@@ -996,7 +1097,7 @@ MANUSCRIPT_CSS = """
 }
 .ms-stat-card .value {
     font-size: 1.55em; font-weight: 800;
-    color: var(--ink-orange-dark); line-height: 1;
+    color: var(--ink-accent-strong); line-height: 1;
 }
 
 /* ===== Pane header ===== */
@@ -1007,7 +1108,7 @@ MANUSCRIPT_CSS = """
     border-bottom: 2px solid var(--ink-orange);
     border-radius: var(--ink-radius-lg) var(--ink-radius-lg) 0 0;
     font-weight: 700;
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     font-size: 1.02em;
     display: flex; align-items: center; gap: 6px;
 }
@@ -1098,7 +1199,7 @@ MANUSCRIPT_CSS = """
     display: inline-flex; align-items: center; gap: 6px;
     padding: 6px 14px; border-radius: var(--ink-radius-pill);
     background: var(--ink-surface-tint-strong);
-    color: var(--ink-orange-dark);
+    color: var(--ink-accent-strong);
     font-weight: 700; font-size: 0.95em;
     border: 1px solid var(--ink-border-orange);
 }

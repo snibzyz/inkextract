@@ -21,7 +21,7 @@ def step_header(num: int, title: str, desc: Optional[str] = None) -> None:
     )
     st.markdown(
         f'<div style="margin:0.9rem 0 0.4rem 0;">'
-        f'  <span style="background:var(--ink-orange,#f97316);color:white;'
+        f'  <span style="background:var(--ink-orange,#f97316);color:var(--ink-on-primary,white);'
         f'    padding:0.18rem 0.55rem;border-radius:0.35rem;font-weight:700;'
         f'    font-size:0.85em;margin-right:0.55rem;">ขั้นที่ {num}</span>'
         f'  <span style="font-weight:600;font-size:1.05rem;color:var(--ink-text);">{title}</span>'
@@ -212,7 +212,7 @@ def filename_preview(filenames: List[str], total: Optional[int] = None,
         f'<div style="background:var(--ink-surface-tint,#fff7ed);'
         f'border-left:3px solid var(--ink-orange,#f97316);padding:0.65rem 0.95rem;'
         f'border-radius:0.45rem;margin:0.5rem 0;">'
-        f'<div style="font-weight:600;color:var(--ink-orange-dark,#c2410c);'
+        f'<div style="font-weight:600;color:var(--ink-accent-strong,#c2410c);'
         f'font-size:0.92em;margin-bottom:0.45rem;">'
         f'{title} ({total:,} ไฟล์)</div>'
         f'{list_html}</div>',
