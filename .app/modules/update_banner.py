@@ -246,8 +246,19 @@ def render() -> None:
     # Kick off background check on the very first render (no-op afterwards)
     _ensure_bg_check_started()
 
+    # ระหว่างที่ background thread ยังเช็ค GitHub อยู่ — auto-refresh สั้น ๆ
+    # เพื่อให้ banner โผล่อัตโนมัติทันทีที่เช็คเสร็จ (ไม่ต้อง F5)
+    # check_for_update มี timeout 4.0s → poll ทุก 800ms สูงสุด ~7 ครั้ง (~5.6s)
+    # พอ cache populated แล้วครั้งถัดไป condition นี้ False → autorefresh ไม่ถูกเรียก หยุดเอง
+    if not _PROCESS_UPDATE_CACHE["checked"]:
+        try:
+            from streamlit_autorefresh import st_autorefresh  # type: ignore
+            st_autorefresh(interval=800, limit=7, key="_update_check_poll")
+        except Exception:
+            pass  # fallback: user still needs F5 if package missing
+
     # อ่านผลจาก process cache — ถ้ายังเช็คไม่เสร็จ release = None → return ทันที
-    # ครั้งถัดไปที่ user คลิกอะไร rerun จะอ่านค่าใหม่
+    # autorefresh ด้านบนจะ rerun ให้เองเมื่อ cache มีค่า
     if not state["checked"] and _PROCESS_UPDATE_CACHE["checked"]:
         state["checked"] = True
         state["release"] = _PROCESS_UPDATE_CACHE["release"]
