@@ -79,12 +79,15 @@ class RegexPatterns:
         self._load_patterns()
 
         # Main patterns - อนุญาตเฉพาะภาษาไทย เครื่องหมายวรรคตอน และตัวเลข
-        # รวม CJK punctuation + fullwidth forms (、。！？，：；、) - punctuation
-        # CJK letters (zh/jp/ko) caught by foreign_combined in step 1 ก่อนเสมอ
-        self.allowed_chars = re.compile(r'[฀-๿\s\n\r\t.,!?;:()\[\]{}\'"ๆ\-–—/%@#*+=<>|~`^&$฿ -⁯0-9　-〿＀-｟￠-￯]')
+        # CJK punctuation (U+3000-303F) ยังอนุญาต — ปล่อย exclude patterns (「」『』【】（）) ตัดทีหลัง
+        # Halfwidth/Fullwidth Forms (U+FF00-FFEF) ย้ายไป foreign_combined แล้ว — เป็น artifact จาก CJK ต้นฉบับ
+        self.allowed_chars = re.compile(r'[฀-๿\s\n\r\t.,!?;:()\[\]{}\'"ๆ\-–—/%@#*+=<>|~`^&$฿ -⁯0-9　-〿]')
         self.vocab_pattern = re.compile(r'[一-鿿].*\|.*[฀-๿]')
-        self.numbers_pattern = re.compile(r'[0-9]')
-        self.english_pattern = re.compile(r'[A-Za-z]')
+        # numbers_pattern ใช้ \d (Unicode decimal digit) ครอบทุก script — ASCII / fullwidth ０-９ / Arabic-Indic ٠-٩ / Thai ๐-๙ ฯลฯ
+        # เพื่อให้ "ตัวเลขทุกแบบ" ไปลงหมวด "ตัวเลข" ไม่ใช่ "ภาษาต่างประเทศ" — เคารพ checkbox ของ user
+        self.numbers_pattern = re.compile(r'\d')
+        # english_pattern คลุม Latin มาตรฐาน + fullwidth Latin (Ａ-Ｚ ／ ａ-ｚ) — fullwidth Latin = CJK typography ของ ASCII Latin
+        self.english_pattern = re.compile(r'[A-Za-zＡ-Ｚａ-ｚ]')
         self.chinese_pattern = re.compile(r'[一-鿿]')
 
         self._init_foreign_patterns()
@@ -160,6 +163,8 @@ class RegexPatterns:
             r'က-႟Ⴀ-ჿ'                 # Myanmar / Georgian
             r'ሀ-፿ក-៿᠀-᢯'    # Ethiopic / Khmer / Mongolian
             r'԰-֏֐-׿יִ-ﭏ'    # Armenian / Hebrew
+            r'​-‏‪-‮⁠-⁤⁦-⁯'  # Invisible/format chars: ZWSP/ZWNJ/ZWJ/LRM/RLM/bidi/word-joiner (？ rendered blank in editors)
+            r'＀-／：-＠［-｀｛-￯'  # Halfwidth/Fullwidth Forms (punct + Kana + signs) - skip FF10-FF19 (０-９) -> numbers / skip FF21-FF3A FF41-FF5A -> english
         )
         self.foreign_combined = re.compile(f'[{foreign_class}]')
         # legacy field — เก็บไว้ในกรณีที่ external code อ้างอิง
@@ -172,13 +177,20 @@ class RegexPatterns:
         return self.ignore_combined.sub('', text)
 
     def detect_foreign_chars(self, text: str) -> bool:
-        """ตรวจจับอักษรต่างประเทศแบบ single-pass"""
+        """ตรวจจับอักษรต่างประเทศแบบ single-pass
+
+        สำคัญ: ตัด digits / Latin letters ออกก่อนเสมอ — digit/letter ต้องไปลงหมวด
+        "ตัวเลข" / "ภาษาอังกฤษ" ของ user ไม่ใช่ "ภาษาต่างประเทศ" (เคารพ checkbox)
+        แม้ digit นั้นจะเป็น Arabic-Indic ٠-٩ ก็ตาม
+        """
+        # ตัด digit/letter ออกก่อน — กันการนับซ้ำเข้าหมวด foreign
+        check_text = self.numbers_pattern.sub('', text)
+        check_text = self.english_pattern.sub('', check_text)
         # 1) regex รวมอักษรต่างประเทศก้อนเดียว — ครอบคลุม 99% ของกรณี
-        if self.foreign_combined.search(text):
+        if self.foreign_combined.search(check_text):
             return True
-        # 2) Fallback กันอักษรประหลาดอื่นที่ไม่ใช่ allowed/English
-        leftover = self.allowed_chars.sub('', text)
-        leftover = self.english_pattern.sub('', leftover)
+        # 2) Fallback กันอักษรประหลาดอื่นที่ไม่ใช่ allowed
+        leftover = self.allowed_chars.sub('', check_text)
         for ch in leftover:
             if ord(ch) >= 32:
                 return True

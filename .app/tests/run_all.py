@@ -14,6 +14,7 @@ TEST_MODULES = [
     'test_ui',
     'test_format_checker',
     'test_core',
+    'test_classifier',
     'test_manuscript_checker',
     'test_vocab_processor',
     'test_proofreader',

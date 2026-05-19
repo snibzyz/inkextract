@@ -107,22 +107,23 @@ class FileAnalyzer:
         """Analyze single file content"""
         errors = []
         
-        # Check if file exists instead of strict path validation
         if not file_path.exists():
             self.logger.error(f"File not found: {file_path}")
             return errors
-        
+
         if not self.validator.validate_file_size(file_path):
-            self.logger.warning(f"File too large: {file_path}")
-            return errors
-        
+            self.logger.warning(
+                f"File exceeds max_file_size ({app_config.max_file_size} bytes) — scanning anyway: {file_path}"
+            )
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
-            
+
             if len(lines) > app_config.max_lines_per_file:
-                self.logger.warning(f"File has too many lines: {file_path}")
-                return errors
+                self.logger.warning(
+                    f"File exceeds max_lines_per_file ({app_config.max_lines_per_file}) — scanning anyway: {file_path}"
+                )
             
             for idx, raw_line in enumerate(lines):
                 line_content = raw_line.rstrip('\n')
