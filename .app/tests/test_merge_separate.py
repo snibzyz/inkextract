@@ -204,13 +204,79 @@ def test_separate_files_with_multiple_uploads():
         sp = SeparateProcessor()
         sp.separate_dir = Path(td)
         f1 = MockUploadedFile('1.txt', "บท 1\ncontent A\nบท 2\ncontent B".encode('utf-8'))
-        results = sp.separate_files(
+        result = sp.separate_files(
             [f1], focus_keyword='บท', title_prefix='Ch ', title_suffix='',
             chapter_number_padding=3, start_number=1, strip_end_credit=False,
             end_credit_text='',
         )
-        assert len(results) == 1
-        assert results[0]['sections'] == 2
+        assert result['sections'] == 2
+        assert result['source_files'] == ['1.txt']
+        assert len(result['created_files']) == 2
+
+
+def test_separate_files_merges_before_split():
+    """รวมก่อนหั่น — ตอนที่ถูกตัดคร่อมขอบไฟล์ต้องไม่ขาดเป็น 2 ไฟล์"""
+    with tempfile.TemporaryDirectory() as td:
+        sp = SeparateProcessor()
+        sp.separate_dir = Path(td)
+        # ไฟล์ 1 จบกลางตอน 2 — ไฟล์ 2 เริ่มด้วยเนื้อหาตอน 2 ที่เหลือ (ไม่มีหัวตอน)
+        f1 = MockUploadedFile('1.txt', "บท 1\nA1\nบท 2\nB1".encode('utf-8'))
+        f2 = MockUploadedFile('2.txt', "B2 ต่อจากไฟล์แรก\nบท 3\nC1".encode('utf-8'))
+        result = sp.separate_files(
+            [f2, f1], focus_keyword='บท', title_prefix='Ch ', title_suffix='',
+            chapter_number_padding=3, start_number=1, strip_end_credit=False,
+            end_credit_text='',
+        )
+        # 3 ตอน — ถ้าหั่นทีละไฟล์ "B2 ต่อจากไฟล์แรก" จะกลายเป็นตอนหัวขาดเกินมา (รวมเป็น 4)
+        assert result['sections'] == 3
+        # ตอนที่ 2 ต้องมีทั้ง B1 (จากไฟล์แรก) และ B2 (จากไฟล์สอง) — เนื้อหาคร่อมไฟล์ยังครบ
+        ch2_text = sorted(result['created_files'])[1].read_text(encoding='utf-8')
+        assert 'B1' in ch2_text and 'B2 ต่อจากไฟล์แรก' in ch2_text
+
+
+def _run_header_mode(td, header_mode):
+    """helper — แยกไฟล์ตัวอย่างด้วย header_mode ที่กำหนด คืน text ของตอนแรก"""
+    sp = SeparateProcessor()
+    sp.separate_dir = Path(td)
+    f1 = MockUploadedFile('1.txt', "### ตอนที่ 1\nA1\n### ตอนที่ 2\nB1".encode('utf-8'))
+    result = sp.separate_files(
+        [f1], focus_keyword='###', title_prefix='Ch ', title_suffix='',
+        chapter_number_padding=3, start_number=1, strip_end_credit=False,
+        end_credit_text='', header_mode=header_mode,
+    )
+    assert result['sections'] == 2
+    return sorted(result['created_files'])[0].read_text(encoding='utf-8')
+
+
+def test_separate_header_mode_keep():
+    with tempfile.TemporaryDirectory() as td:
+        ch1 = _run_header_mode(td, 'keep')
+        assert ch1.splitlines()[0] == '### ตอนที่ 1'
+
+
+def test_separate_header_mode_drop_line():
+    with tempfile.TemporaryDirectory() as td:
+        ch1 = _run_header_mode(td, 'drop_line')
+        # บรรทัดหัวตอนหายทั้งบรรทัด — ไฟล์เริ่มด้วยเนื้อหา
+        assert '###' not in ch1
+        assert ch1.splitlines()[0] == 'A1'
+
+
+def test_separate_header_mode_strip_marker():
+    with tempfile.TemporaryDirectory() as td:
+        ch1 = _run_header_mode(td, 'strip_marker')
+        # ตัดเฉพาะเครื่องหมาย ### — เก็บชื่อตอนไว้
+        assert ch1.splitlines()[0] == 'ตอนที่ 1'
+        assert 'A1' in ch1
+
+
+def test_transform_header_helper():
+    th = SeparateProcessor._transform_header
+    assert th('### ตอนที่ 1', '###', 'keep') == '### ตอนที่ 1'
+    assert th('### ตอนที่ 1', '###', 'drop_line') is None
+    assert th('### ตอนที่ 1', '###', 'strip_marker') == 'ตอนที่ 1'
+    # เครื่องหมายล้วน ไม่มีชื่อตอน → strip_marker คืน None (ไม่เก็บบรรทัดว่าง)
+    assert th('###', '###', 'strip_marker') is None
 
 
 # ============================================================

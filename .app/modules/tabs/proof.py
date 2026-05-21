@@ -1013,21 +1013,25 @@ def render(proofreader, file_processor) -> None:
                 proofreader.import_normal_mode_corrections()
 
         with col_act4:
-            if st.button(
+            nm_fix_clicked = st.button(
                 " **แก้ไขไฟล์**",
                 disabled=not bool(proofreader.normal_mode_errors),
                 width='stretch',
                 key="nm_btn_fix",
-            ):
-                proofreader.fix_normal_mode_files(
-                    destination_dir=destination_dir,
-                    in_place=False,
-                )
+            )
 
         st.caption(
             "โหมดทั่วไปไม่มี [A] ให้ตรวจ — ระบบจับคู่ด้วย **ชื่อไฟล์ + เลขบรรทัด** ตรงเป๊ะเท่านั้น "
             "(ห้ามแก้บรรทัด `## filename` หรือ `123|` ในไฟล์ export)"
         )
+
+        # รัน fix นอก column — progress bar + alert บอกปลายทาง แสดงเต็มความกว้าง
+        # ตรงจุดที่ user กดปุ่ม (ไม่ใช่แค่ banner บนสุดที่ user อาจไม่เลื่อนไปเห็น)
+        if nm_fix_clicked:
+            proofreader.fix_normal_mode_files(
+                destination_dir=destination_dir,
+                in_place=False,
+            )
 
         # ── สรุปผลการสแกน — แสดงเมื่อเคยวิเคราะห์แล้ว
         stats = proofreader.normal_mode_stats

@@ -54,80 +54,129 @@ class SeparateProcessor:
         flush()
         return created
     
-    def separate_files(self, uploaded_files, focus_keyword: str, title_prefix: str, title_suffix: str, 
-                      chapter_number_padding: int, start_number: int, strip_end_credit: bool, end_credit_text: str = "จบตอน") -> List[dict]:
-        """แยกไฟล์หลายไฟล์พร้อมการตั้งค่าขั้นสูง"""
-        results = []
-        current_chapter = start_number
-        
-        # เรียงไฟล์ตามชื่อ
+    # โหมดจัดการบรรทัดหัวตอน (ตัวแยก) ในไฟล์ที่แยกออกมา
+    HEADER_MODES = ("keep", "drop_line", "strip_marker")
+
+    @staticmethod
+    def _transform_header(line: str, focus_keyword: str, header_mode: str):
+        """แปลงบรรทัดหัวตอนตามโหมด — คืนค่าที่จะเก็บไว้ในไฟล์ตอน หรือ None ถ้าให้ตัดทั้งบรรทัด
+
+        - keep         : เก็บบรรทัดหัวตอนไว้ตามเดิม
+        - drop_line    : ตัดทั้งบรรทัดหัวตอน (คืน None)
+        - strip_marker : ตัดเฉพาะเครื่องหมาย focus_keyword ออก เก็บข้อความที่เหลือ
+        """
+        if header_mode == "drop_line":
+            return None
+        if header_mode == "strip_marker":
+            stripped = line.lstrip()[len(focus_keyword):].lstrip()
+            return stripped or None
+        return line  # keep
+
+    def separate_files(self, uploaded_files, focus_keyword: str, title_prefix: str, title_suffix: str,
+                      chapter_number_padding: int, start_number: int, strip_end_credit: bool,
+                      end_credit_text: str = "จบตอน", header_mode: str = "keep") -> dict:
+        """แยกไฟล์หลายไฟล์ — รวมทุกไฟล์เป็น stream เดียวก่อน แล้วค่อยหั่นเป็นตอน
+
+        หลักการ "รวมก่อนหั่น" (merge-then-split):
+          ตอนหนึ่งอาจถูกตัดคร่อมขอบไฟล์ — จบไฟล์ A กลางตอน เนื้อหาไปต่อหัวไฟล์ B
+          ถ้าหั่นทีละไฟล์ ตอนที่คร่อมไฟล์จะกลายเป็น 2 ไฟล์ (ท้ายขาด + หัวขาด)
+          และเนื้อหาก่อน focus_keyword ตัวแรกของแต่ละไฟล์จะถูกนับเป็นตอนซ้ำซ้อน
+          การรวมทุกไฟล์เป็น stream เดียวก่อนหั่น ทำให้ตอนที่คร่อมไฟล์ยังครบในไฟล์เดียว
+          และเลขตอนเรียงต่อเนื่องถูกต้องทั้งชุด
+
+        Args:
+            header_mode: จัดการบรรทัดหัวตอน — "keep" / "drop_line" / "strip_marker"
+
+        Returns:
+            dict: {'source_files': [ชื่อไฟล์ต้นทาง...], 'sections': N, 'created_files': [Path...]}
+        """
+        empty = {'source_files': [], 'sections': 0, 'created_files': []}
+        if not uploaded_files:
+            return empty
+
+        # เรียงไฟล์ตามชื่อ — ลำดับชื่อไฟล์คือลำดับเนื้อเรื่อง
         sorted_files = sorted(uploaded_files, key=lambda x: x.name)
-        
+
+        # ── รวมทุกไฟล์เป็น stream เดียว (merge เข้า buffer) ──
+        merged_parts: List[str] = []
+        source_names: List[str] = []
         for uploaded_file in sorted_files:
             try:
-                # อ่านเนื้อหาไฟล์
                 content = uploaded_file.read().decode('utf-8')
-                
-                # แยกตามหัวข้อ
-                sections = self._separate_by_keyword(
-                    content, focus_keyword, title_prefix, title_suffix,
-                    chapter_number_padding, current_chapter, strip_end_credit, end_credit_text
-                )
-                
-                # อัปเดตหมายเลขบทถัดไป
-                current_chapter += len(sections)
-                
-                results.append({
-                    'filename': uploaded_file.name,
-                    'sections': len(sections),
-                    'created_files': sections
-                })
-                
             except Exception as e:
-                st.error(f"❌ เกิดข้อผิดพลาดในการประมวลผล {uploaded_file.name}: {str(e)}")
-        
-        return results
+                st.error(f"อ่านไฟล์ {uploaded_file.name} ไม่ได้: {str(e)}")
+                continue
+            # rstrip กันบรรทัดว่างท้ายไฟล์ทำให้เกิดช่องว่างเกินตอนเชื่อม
+            merged_parts.append(content.rstrip('\n'))
+            source_names.append(uploaded_file.name)
+
+        if not merged_parts:
+            return empty
+
+        # คั่นแต่ละไฟล์ด้วยขึ้นบรรทัดใหม่ — กันบรรทัดท้ายไฟล์ A ติดกับบรรทัดหัวไฟล์ B
+        merged_content = "\n".join(merged_parts)
+
+        # ── หั่นตอนจาก stream ที่รวมแล้ว (ครั้งเดียว) ──
+        created_files = self._separate_by_keyword(
+            merged_content, focus_keyword, title_prefix, title_suffix,
+            chapter_number_padding, start_number, strip_end_credit, end_credit_text,
+            header_mode=header_mode,
+        )
+
+        return {
+            'source_files': source_names,
+            'sections': len(created_files),
+            'created_files': created_files,
+        }
     
-    def _separate_by_keyword(self, content: str, focus_keyword: str, title_prefix: str, 
-                           title_suffix: str, chapter_padding: int, start_number: int, 
-                           strip_end_credit: bool, end_credit_text: str = "จบตอน") -> List[Path]:
-        """แยกเนื้อหาตาม focus keyword และสร้างไฟล์"""
+    def _separate_by_keyword(self, content: str, focus_keyword: str, title_prefix: str,
+                           title_suffix: str, chapter_padding: int, start_number: int,
+                           strip_end_credit: bool, end_credit_text: str = "จบตอน",
+                           header_mode: str = "keep") -> List[Path]:
+        """แยกเนื้อหาตาม focus keyword และสร้างไฟล์
+
+        section_started = เจอบรรทัดหัวตอนแล้วอย่างน้อย 1 ครั้ง — ใช้แยกกรณี
+        "section ที่หัวตอนถูกตัดทิ้ง (drop_line) จนยังว่าง" ออกจาก "ยังไม่เริ่ม section"
+        เพื่อให้เลขตอนเรียงตรงไม่ว่าจะเลือก header_mode ใด
+        """
         lines = content.splitlines()
         created_files = []
-        current_section = []
+        current_section: List[str] = []
+        section_started = False
         section_count = 0
-        
+
         for line in lines:
             line = line.rstrip()
-            
+
             # ตรวจสอบว่าเป็นหัวข้อใหม่หรือไม่
             if line.startswith(focus_keyword):
-                # บันทึกส่วนก่อนหน้า (ถ้ามี)
-                if current_section:
+                # บันทึกส่วนก่อนหน้า (preamble หรือตอนที่เริ่มไปแล้ว)
+                if section_started or current_section:
                     file_path = self._save_section(
-                        current_section, title_prefix, title_suffix, 
+                        current_section, title_prefix, title_suffix,
                         chapter_padding, start_number + section_count, strip_end_credit, end_credit_text
                     )
                     if file_path:
                         created_files.append(file_path)
                     section_count += 1
-                    current_section = []
-                
-                # เริ่มส่วนใหม่
-                current_section = [line]
+
+                # เริ่มส่วนใหม่ — จัดการบรรทัดหัวตอนตาม header_mode
+                section_started = True
+                head = self._transform_header(line, focus_keyword, header_mode)
+                current_section = [head] if head is not None else []
             else:
                 # เพิ่มบรรทัดในส่วนปัจจุบัน
                 current_section.append(line)
-        
+
         # บันทึกส่วนสุดท้าย
-        if current_section:
+        if section_started or current_section:
             file_path = self._save_section(
-                current_section, title_prefix, title_suffix, 
+                current_section, title_prefix, title_suffix,
                 chapter_padding, start_number + section_count, strip_end_credit, end_credit_text
             )
             if file_path:
                 created_files.append(file_path)
-        
+
         return created_files
     
     def _save_section(self, section_lines: List[str], title_prefix: str, title_suffix: str,

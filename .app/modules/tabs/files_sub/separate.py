@@ -126,6 +126,27 @@ def render(separate_processor, file_processor) -> None:
             unsafe_allow_html=True,
         )
 
+    # ── ตัวเลือก: บรรทัดหัวตอน (ตัวแยก) จะเก็บไว้ในไฟล์ตอนหรือไม่
+    _HEADER_MODES = ["keep", "drop_line", "strip_marker"]
+    _HEADER_LABELS = {
+        "keep": "เก็บบรรทัดหัวตอนไว้ตามเดิม",
+        "drop_line": "ลบทั้งบรรทัดหัวตอนออก",
+        "strip_marker": f"ลบเฉพาะเครื่องหมาย ({focus_keyword or '###'}) — เก็บชื่อตอนไว้",
+    }
+    saved_header_mode = prefs.get("header_mode", "keep")
+    if saved_header_mode not in _HEADER_MODES:
+        saved_header_mode = "keep"
+    header_mode = st.selectbox(
+        "บรรทัดหัวตอน (ตัวแยก) ในไฟล์ตอนที่แยกออกมา",
+        options=_HEADER_MODES,
+        format_func=lambda m: _HEADER_LABELS[m],
+        index=_HEADER_MODES.index(saved_header_mode),
+        help="เลือกว่าจะให้บรรทัดที่ขึ้นต้นด้วยเครื่องหมายแยกตอน (เช่น '### ตอนที่ 1') "
+             "ติดไปในไฟล์ตอนหรือไม่ — 'ลบทั้งบรรทัด' = ไฟล์เริ่มด้วยเนื้อหาเลย · "
+             "'ลบเฉพาะเครื่องหมาย' = เหลือ 'ตอนที่ 1'",
+        key="sep_header_mode",
+    )
+
     # ── ตัวเลือกขั้นสูง — ลบข้อความปิดท้ายตอน
     with st.expander("ตัวเลือกขั้นสูง (ลบ end credit เช่น 'จบตอน')", expanded=False):
         strip_end_credit = st.checkbox(
@@ -180,6 +201,7 @@ def render(separate_processor, file_processor) -> None:
     # บันทึก settings
     new_settings = {
         "focus_keyword": focus_keyword,
+        "header_mode": header_mode,
         "strip_end_credit": strip_end_credit,
         "end_credit_text": end_credit_text,
         "title_prefix": title_prefix,
@@ -210,30 +232,41 @@ def render(separate_processor, file_processor) -> None:
     # ───────────── PREVIEW ─────────────
     st.markdown("---")
     if uploaded_files:
-        # อ่าน upload + ตัด section ตาม focus_keyword
-        total_sections = 0
-        all_sections: list = []   # list of section bodies (string)
-        for uf in uploaded_files:
+        # รวมทุกไฟล์ (เรียงตามชื่อ) เป็น stream เดียวก่อน — preview ต้องตรงกับผลจริง
+        # ที่ทำแบบ merge-then-split (ดู separate_processor.separate_files)
+        sorted_uploaded = sorted(uploaded_files, key=lambda f: f.name)
+        merged_parts: list = []
+        for uf in sorted_uploaded:
             try:
                 pos = uf.tell()
                 content = uf.read().decode('utf-8', errors='replace')
                 uf.seek(pos)
-
-                # ตัดเป็น sections ตาม focus_keyword
-                if focus_keyword:
-                    cur_section = []
-                    for line in content.splitlines():
-                        if line.lstrip().startswith(focus_keyword):
-                            if cur_section:
-                                all_sections.append("\n".join(cur_section))
-                                cur_section = []
-                        cur_section.append(line)
-                    if cur_section:
-                        all_sections.append("\n".join(cur_section))
-                else:
-                    all_sections.append(content)
+                merged_parts.append(content.rstrip('\n'))
             except Exception:
                 continue
+        merged_content = "\n".join(merged_parts)
+
+        # ตัดเป็น sections ตาม focus_keyword จาก stream ที่รวมแล้ว
+        # จัดการบรรทัดหัวตอนตาม header_mode ให้ตรงกับตอนแยกจริง
+        all_sections: list = []   # list of section bodies (string)
+        if focus_keyword:
+            cur_section: list = []
+            section_started = False
+            for line in merged_content.splitlines():
+                if line.lstrip().startswith(focus_keyword):
+                    if section_started or cur_section:
+                        all_sections.append("\n".join(cur_section))
+                        cur_section = []
+                    section_started = True
+                    head = separate_processor._transform_header(line, focus_keyword, header_mode)
+                    if head is not None:
+                        cur_section.append(head)
+                else:
+                    cur_section.append(line)
+            if section_started or cur_section:
+                all_sections.append("\n".join(cur_section))
+        elif merged_content:
+            all_sections.append(merged_content)
 
         total_sections = len(all_sections) if all_sections else 1
 
@@ -274,11 +307,10 @@ def render(separate_processor, file_processor) -> None:
     can_separate = bool(uploaded_files and dest_path and focus_keyword.strip())
     if st.button(" **เริ่มแยกไฟล์**", type="primary", width='stretch',
                  disabled=not can_separate, key="sep_btn_run"):
-        with st.spinner("กำลังแยกไฟล์..."):
-            # ส่ง dest_path เข้าไปผ่าน processor (TODO: อาจต้องเพิ่ม param ใน separate_processor)
-            # ตอนนี้ separate_files ไม่รับ output folder → ใช้ค่า default (Separate)
-            # ถ้า dest_path != Separate ให้ย้ายไฟล์หลังจาก separate เสร็จ
-            results = separate_processor.separate_files(
+        with st.spinner("กำลังรวมไฟล์ + แยกตอน..."):
+            # รวมทุกไฟล์เป็นชุดเดียวก่อนหั่น — ตอนที่คร่อมขอบไฟล์จะไม่ขาด
+            # separate_files ไม่รับ output folder → เขียนลง Separate ก่อน แล้วย้ายทีหลัง
+            result = separate_processor.separate_files(
                 uploaded_files=uploaded_files,
                 focus_keyword=focus_keyword,
                 title_prefix=title_prefix,
@@ -287,27 +319,33 @@ def render(separate_processor, file_processor) -> None:
                 start_number=int(start_number),
                 strip_end_credit=strip_end_credit,
                 end_credit_text=end_credit_text,
+                header_mode=header_mode,
             )
+            created_files = result.get('created_files', [])
 
             # ย้ายไฟล์ไป dest_path ถ้าไม่ใช่ Separate default
             from pathlib import Path as _P
             default_dest = paths.SEPARATE_DIR
-            if dest_path and _P(dest_path).resolve() != default_dest.resolve():
+            if dest_path and created_files and _P(dest_path).resolve() != default_dest.resolve():
                 dest_path.mkdir(parents=True, exist_ok=True)
-                for res in results:
-                    for src_file in res.get('created_files', []):
-                        try:
-                            target = dest_path / _P(src_file).name
-                            _P(src_file).replace(target)
-                        except Exception as e:
-                            st.warning(f"ย้าย `{_P(src_file).name}` ไม่ได้: {e}")
+                moved = []
+                for src_file in created_files:
+                    try:
+                        target = dest_path / _P(src_file).name
+                        _P(src_file).replace(target)
+                        moved.append(target)
+                    except Exception as e:
+                        st.warning(f"ย้าย `{_P(src_file).name}` ไม่ได้: {e}")
+                created_files = moved
 
-        if results:
-            total_created = sum(r.get('sections', 0) for r in results)
-            st.success(f"แยกไฟล์สำเร็จ — สร้าง {total_created:,} ไฟล์ตอน "
-                       f"จาก {len(results)} ไฟล์ต้นทาง")
-            for r in results[:5]:
-                st.write(f"`{r['filename']}` → {r['sections']} ตอน")
-            st.toast(f"แยก {total_created} ไฟล์สำเร็จ")
+        if created_files:
+            total_created = len(created_files)
+            src_count = len(result.get('source_files', []))
+            st.success(
+                f"แยกไฟล์สำเร็จ — รวม {src_count:,} ไฟล์ต้นทางเป็นชุดเดียว "
+                f"แล้วหั่นได้ {total_created:,} ไฟล์ตอน"
+            )
+            st.info(f":material/folder: บันทึกไฟล์ตอนทั้งหมดไว้ที่: `{dest_path}`")
+            st.toast(f"แยก {total_created} ไฟล์ตอนสำเร็จ", icon=":material/task_alt:")
         else:
             st.error("แยกไม่สำเร็จ — กรุณาตรวจสอบเครื่องหมายหัวบท")

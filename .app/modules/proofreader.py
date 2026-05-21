@@ -19,6 +19,9 @@ class NovelProofreader:
         self.base_dir = paths.ROOT
         self.found_errors: List[Dict[str, Any]] = []
         self.normal_mode_errors: List[Dict[str, Any]] = []
+        # รายชื่อไฟล์ .txt ทั้งหมดที่สแกนในรอบล่าสุด (รวมไฟล์ที่ไม่มี error)
+        # ใช้ตอน fix แบบส่งออกแยกโฟลเดอร์ — จะ copy ไฟล์ที่ไม่ได้แก้ตามไปด้วย
+        self.normal_mode_scanned_files: List[str] = []
         self.normal_mode_stats: Dict[str, int] = {
             'files': 0,
             'errors': 0,
@@ -991,6 +994,7 @@ class NovelProofreader:
             st.info(f"🔄 ตรวจพบการเปลี่ยนแปลง exclude.txt โหลด patterns ใหม่แล้ว ({len(regex_patterns.ignore_patterns)} patterns)")
         
         self.normal_mode_errors = []
+        self.normal_mode_scanned_files = []
         self.normal_mode_stats = {
             'files': 0,
             'errors': 0,
@@ -1028,6 +1032,8 @@ class NovelProofreader:
             st.success(f"✅ พบไฟล์ทั้งหมด {len(txt_files)} ไฟล์ กำลังประมวลผลทั้งหมด...")
         
         self.normal_mode_source = input_directory
+        # เก็บรายชื่อไฟล์ที่สแกนทั้งหมด — ตอน fix จะส่งออกครบทุกไฟล์ แม้ไฟล์ไม่มี error
+        self.normal_mode_scanned_files = [str(p) for p in txt_files]
         self.normal_merge_mode = merge_mode
         self.normal_merge_source_dir = input_directory if merge_mode else None
         self.normal_merge_mapping = []
@@ -1576,16 +1582,22 @@ class NovelProofreader:
     ) -> Dict[str, int]:
         """เขียนไฟล์ที่แก้แล้ว — แทนที่บรรทัดที่มี corrected_content ในไฟล์ต้นทาง.
 
+        เมื่อ in_place=False จะ **ส่งออกไฟล์ที่สแกนทั้งหมด** ไปยังโฟลเดอร์ปลายทาง
+        แม้ไฟล์นั้นไม่มีการแก้ไข (คัดลอกตามต้นฉบับ) — เพื่อให้ปลายทางมีชุดไฟล์ครบ
+        ผู้ใช้จะได้ไม่ต้องตามเก็บไฟล์ที่ไม่ได้แก้เอง
+
         Args:
             destination_dir: โฟลเดอร์ปลายทาง (ละเว้นถ้า in_place=True)
-            in_place: ถ้า True เขียนทับไฟล์ต้นทาง (ระวัง: destructive)
+            in_place: ถ้า True เขียนทับไฟล์ต้นทาง (ระวัง: destructive) — แตะเฉพาะไฟล์ที่มีการแก้
 
         Returns:
-            dict สรุปจำนวน: {'files': N, 'lines_replaced': M, 'errors': E}
+            dict สรุปจำนวน:
+            {'files': N, 'files_with_changes': C, 'lines_replaced': M, 'errors': E}
+            โดย files = จำนวนไฟล์ที่เขียนออกทั้งหมด (รวมไฟล์ที่คัดลอกตามต้นฉบับ)
         """
         if not self.normal_mode_errors:
             st.warning("ไม่มีข้อมูลให้แก้ — กดวิเคราะห์โหมดทั่วไป + นำเข้าการแก้ไข ก่อน")
-            return {'files': 0, 'lines_replaced': 0, 'errors': 0}
+            return {'files': 0, 'files_with_changes': 0, 'lines_replaced': 0, 'errors': 0}
 
         # Group by source file
         errors_by_file: Dict[str, List[Dict[str, Any]]] = {}
@@ -1599,15 +1611,30 @@ class NovelProofreader:
             destination_dir = Path(destination_dir).expanduser()
             destination_dir.mkdir(parents=True, exist_ok=True)
 
+        # รายการไฟล์ที่จะเขียน:
+        #  - in_place: เฉพาะไฟล์ที่มี error (ไฟล์อื่นอยู่ที่เดิมอยู่แล้ว ไม่ต้องแตะ)
+        #  - ปลายทางแยก: ไฟล์ที่สแกน "ทั้งหมด" — ไฟล์ที่ไม่ได้แก้ก็คัดลอกตามไปด้วย
+        #    เพื่อให้ปลายทางมีชุดไฟล์ครบ ผู้ใช้จะได้ไม่หลงว่าไฟล์ไหนหาย
+        if in_place:
+            files_to_write = list(errors_by_file.keys())
+        else:
+            files_to_write = list(self.normal_mode_scanned_files)
+            # เผื่อ scanned_files ว่าง (state เก่าก่อนเพิ่มฟีเจอร์นี้) — เติมไฟล์ที่มี error
+            for fp in errors_by_file:
+                if fp not in files_to_write:
+                    files_to_write.append(fp)
+
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        total_files = len(errors_by_file)
+        total_files = len(files_to_write) or 1
         files_done = 0
-        lines_replaced_total = 0
+        files_written = 0
         files_with_changes = 0
+        files_copied = 0
+        lines_replaced_total = 0
 
-        for source_path_str, errors in errors_by_file.items():
+        for source_path_str in files_to_write:
             files_done += 1
             source_path = Path(source_path_str)
             file_name = source_path.name
@@ -1627,7 +1654,7 @@ class NovelProofreader:
                 continue
 
             replaced_in_file = 0
-            for error in errors:
+            for error in errors_by_file.get(source_path_str, []):
                 # merge_mode: line_number = global → ใช้ _local_line_number
                 # ปกติ: line_number = local อยู่แล้ว
                 if self.normal_merge_mode and '_local_line_number' in error:
@@ -1649,10 +1676,11 @@ class NovelProofreader:
                 lines[line_idx] = corrected.rstrip('\r\n') + newline
                 replaced_in_file += 1
 
-            if replaced_in_file == 0:
-                continue  # ไม่มีการเปลี่ยน → ข้ามไฟล์นี้ ไม่เขียนทับ
+            # in_place: ไฟล์ที่ไม่มีการเปลี่ยน → ข้าม ไม่เขียนทับต้นทางโดยไม่จำเป็น
+            if in_place and replaced_in_file == 0:
+                continue
 
-            # Write
+            # Write — ปลายทางแยกจะเขียนทุกไฟล์ (ที่แก้ = เขียนฉบับแก้, ที่ไม่แก้ = คัดลอกตามต้นฉบับ)
             if in_place:
                 dest_path = source_path
             else:
@@ -1664,30 +1692,63 @@ class NovelProofreader:
                 st.error(f"❌ เขียน {dest_path} ไม่ได้: {e}")
                 continue
 
-            lines_replaced_total += replaced_in_file
-            files_with_changes += 1
+            files_written += 1
+            if replaced_in_file > 0:
+                lines_replaced_total += replaced_in_file
+                files_with_changes += 1
+            else:
+                files_copied += 1
 
         progress_bar.progress(1.0)
         status_text.text("เขียนไฟล์ที่แก้แล้วเสร็จสิ้น")
 
         summary = {
-            'files': files_with_changes,
+            'files': files_written,
+            'files_with_changes': files_with_changes,
             'lines_replaced': lines_replaced_total,
             'errors': len(self.normal_mode_errors),
         }
 
-        if files_with_changes > 0:
+        if files_written > 0:
             # Persistent banner — เก็บผลใน session เพื่อให้ user เห็น "ไปอยู่ไหน"
             # แม้หลัง rerun (Streamlit re-execute script ทุก interaction)
             st.session_state["_nm_last_fix"] = {
                 "destination": "" if in_place else str(destination_dir),
-                "files": int(files_with_changes),
+                "files": int(files_written),
+                "files_with_changes": int(files_with_changes),
                 "lines": int(lines_replaced_total),
                 "in_place": bool(in_place),
             }
-            st.toast(f"Fix สำเร็จ {files_with_changes} ไฟล์", icon="🛠️")
+            # Alert ชัด ๆ ตรงจุดที่ user กดปุ่ม — บอกว่าบันทึกไฟล์ไว้ที่ไหน
+            if in_place:
+                st.success(
+                    f":material/check_circle: แก้ไขไฟล์สำเร็จ — "
+                    f"แก้ **{files_with_changes}** ไฟล์ · **{lines_replaced_total}** บรรทัด · "
+                    f"เขียนทับไฟล์ต้นทาง (in-place)"
+                )
+            else:
+                if files_with_changes > 0:
+                    detail = (
+                        f"**{files_with_changes}** ไฟล์มีการแก้ "
+                        f"(**{lines_replaced_total}** บรรทัด) · "
+                        f"อีก **{files_copied}** ไฟล์คัดลอกตามต้นฉบับ"
+                    )
+                else:
+                    detail = (
+                        f"ยังไม่มีไฟล์ใดถูกแก้ — คัดลอกต้นฉบับครบ **{files_copied}** ไฟล์ "
+                        "(ถ้าต้องการให้ระบบแก้ ให้กดนำเข้าการแก้ไขก่อน)"
+                    )
+                st.success(
+                    f":material/check_circle: ส่งออกไฟล์สำเร็จ — "
+                    f"รวม **{files_written}** ไฟล์ · {detail}"
+                )
+                st.info(f":material/folder: บันทึกไฟล์ทั้งหมดไว้ที่: `{destination_dir}`")
+            st.toast(
+                f"แก้ไขไฟล์สำเร็จ — ส่งออก {files_written} ไฟล์",
+                icon=":material/task_alt:",
+            )
         else:
-            st.info("ไม่มีบรรทัดที่ถูกแก้ (corrected_content ยังเท่ากับ line_content) — กดนำเข้าการแก้ไขก่อน")
+            st.info("ไม่มีไฟล์ให้เขียน — ตรวจสอบว่าไฟล์ต้นทางยังอยู่ครบ")
 
         return summary
 
