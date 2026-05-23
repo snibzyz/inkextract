@@ -140,10 +140,23 @@ def process(scan: ScanResult, files_to_remove: Iterable[str],
         output_dir/raw/old/    ← ไฟล์ต้นฉบับ "ทั้งหมด" (280 ไฟล์) เป็น backup
 
     ไฟล์ต้นทาง (ในโฟลเดอร์ที่สแกน) จะ "ไม่ถูกแตะ" — ใช้ copy เท่านั้น
+
+    หลักการ renumber:
+        - detect จาก "เลข" อย่างเดียว ไม่สนใจ prefix → ทุกไฟล์ที่มีเลขรวมเป็นกลุ่มเดียว
+        - prefix ของแต่ละไฟล์เดิมถูกเก็บไว้ (เปลี่ยนเฉพาะตัวเลข)
+        - padding ใช้ของไฟล์เดิมแต่ละตัว (กัน "Chapter 001" → "Chapter 02" ผิดเพี้ยน)
+        - raw/ และ raw/old/ ถูกล้างทุกครั้งก่อน process — กันไฟล์ค้างจากรอบก่อน
     """
     report = ProcessReport()
     raw_dir = output_dir / "raw"
     old_dir = raw_dir / "old"
+
+    # ล้าง raw/ ก่อนเสมอ — กันไฟล์ค้างจากรอบก่อน (snapshot ของรอบล่าสุด)
+    if raw_dir.exists():
+        try:
+            shutil.rmtree(raw_dir)
+        except Exception as exc:
+            report.errors.append(f"ล้าง {raw_dir} ไม่สำเร็จ: {exc}")
     raw_dir.mkdir(parents=True, exist_ok=True)
     old_dir.mkdir(parents=True, exist_ok=True)
     report.raw_dir = raw_dir
@@ -160,35 +173,34 @@ def process(scan: ScanResult, files_to_remove: Iterable[str],
         except Exception as exc:
             report.errors.append(f"backup {e.filename}: {exc}")
 
-    in_series = {e.filename for g in scan.series_groups.values() for e in g}
-
-    # ===== STEP 2: ไฟล์ที่ไม่อยู่ใน series → copy ตามเดิมไป raw/ (ถ้าไม่ถูกเลือกลบ) =====
+    # ===== STEP 2: ไฟล์ที่ไม่มีเลข → copy as-is (ถ้าไม่ถูกเลือกลบ) =====
     if copy_unmatched:
         for e in scan.files:
-            if e.filename in in_series or e.filename in remove_set:
+            if e.number is not None or e.filename in remove_set:
                 continue
             try:
                 shutil.copy2(e.path, raw_dir / e.filename)
             except Exception as exc:
                 report.errors.append(f"copy {e.filename}: {exc}")
 
-    # ===== STEP 3: renumber แต่ละ series ไป raw/ =====
-    for series_name, entries in scan.series_groups.items():
-        kept = [e for e in entries if e.filename not in remove_set]
-        kept.sort(key=lambda x: (x.number if x.number is not None else 0))
-        if not kept:
-            continue
+    # ===== STEP 3: ไฟล์ที่มีเลข → รวมเป็นกลุ่มเดียว เรียงตามเลข renumber ต่อเนื่อง =====
+    numbered = [e for e in scan.files if e.number is not None]
+    numbered.sort(key=lambda x: x.number)
+    kept = [e for e in numbered if e.filename not in remove_set]
 
-        # เริ่มเลขจากเลขแรกสุดของไฟล์เดิม (ไม่ใช่จาก 1) เพื่อรักษาช่วงเลขเดิม
-        start_number = kept[0].number if kept[0].number is not None else 1
-        padding = scan.detected_padding
+    if kept:
+        # เริ่มเลขจากเลขแรกสุดของไฟล์เดิมที่เหลือ (รักษาช่วงเลขเดิม)
+        start_number = kept[0].number
+        global_padding = scan.detected_padding
 
         for i, e in enumerate(kept):
             new_number = start_number + i
             old_filename = e.filename
+            # ใช้ padding ของไฟล์เดิมแต่ละตัว — กันชนกรณี mix padding
+            old_padding = e.padding or global_padding
             new_name = re.sub(
-                r'(\d{' + str(padding) + r'})',
-                str(new_number).zfill(padding),
+                r'\d{' + str(old_padding) + r'}',
+                str(new_number).zfill(old_padding),
                 old_filename,
                 count=1,
             )

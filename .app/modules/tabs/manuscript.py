@@ -138,7 +138,7 @@ def _render_action_bar(scan, selected: set):
     with cols[4]:
         do_process = ui.primary_button(
             f"ประมวลผล ({len(selected)})",
-            help="ลบไฟล์ที่เลือก + เรียงเลขใหม่ → workspace/output/manuscript/raw/",
+            help="ลบไฟล์ที่เลือก + เรียงเลขใหม่ → Output/raw/",
             key="ms_process",
             disabled=len(selected) == 0,
         )
@@ -312,8 +312,10 @@ def _render_preview(scan, sorted_entries):
 
 
 def _process_and_report(scan, selected):
-    """ดำเนินการ rename + แสดงผล"""
-    out_dir = paths.OUTPUT_DIR / "manuscript"
+    """ดำเนินการ rename + แสดงผล — save ใน Output/raw/ (ล้างทุกครั้งก่อน save)"""
+    # ส่ง paths.OUTPUT_DIR ตรง ๆ → manuscript_checker จะสร้าง raw/ ภายใต้นี้
+    # (เลิกใช้ subdir 'manuscript' — ตามเจตนาผู้ใช้: save in Output/raw)
+    out_dir = paths.OUTPUT_DIR
     report = manuscript_checker.process(scan, selected, out_dir)
 
     ui.success(
