@@ -51,13 +51,19 @@ class FileProcessor:
                     errors_by_file[file_path] = []
                 errors_by_file[file_path].append(error)
             
+            def _loc(error: dict) -> str:
+                """ป้ายบอกตำแหน่ง — กรณี B (ข้ามแปล) ไม่มีเลขบรรทัดเดิม จึงไม่โชว์ 'บรรทัด 0'"""
+                if error.get('error_bucket') == 'missing_translation' or int(error.get('line_number_B', 0) or 0) <= 0:
+                    return "แทรกใหม่ (AI ข้ามแปล)"
+                return f"บรรทัด {error['line_number_B']}"
+
             # Debug: แสดงข้อมูล found_errors
             st.write(f"🔍 **Debug Fix Process:** พบ {len(found_errors)} รายการทั้งหมด")
             for file_path, errors in errors_by_file.items():
                 file_name = Path(file_path).name
                 st.write(f"  📁 {file_name}: {len(errors)} รายการ")
                 for i, error in enumerate(errors[:2]):  # แสดงแค่ 2 รายการแรก
-                    st.write(f"    {i+1}. บรรทัด {error['line_number_B']}: `{error['original_B'][:50]}...`")
+                    st.write(f"    {i+1}. {_loc(error)}: `{error['original_B'][:50]}...`")
                     st.write(f"       แก้ไขแล้ว: {'✅' if error.get('corrected_B', error['original_B']) != error['original_B'] else '❌'}")
             
             total_files = len(txt_files)
@@ -79,23 +85,49 @@ class FileProcessor:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
 
-                # แก้ไขบรรทัดที่มีปัญหา (ถ้ามี)
+                # แยก error เป็น 2 ชนิด:
+                #  - "แก้บรรทัดเดิม" (line_number_B >= 1): แทนที่บรรทัด [B] เดิมในไฟล์
+                #  - "แทรกบรรทัดที่ AI ข้ามแปล" (กรณี B, line_number_B == 0): ไม่มีบรรทัดเดิม
+                #    ในไฟล์ → ต้องแทรก [A]/[B] กลับเข้า "ตำแหน่งจริง" (missing_insert_after)
+                #    NOTE (bug fix): เดิม line_number_B==0 ทำให้ line_index = -1 แล้วไปทับ
+                #    บรรทัดสุดท้ายของไฟล์ ([B] ที่กรอกไปจึงไม่ถูกแทรกกลับเข้าที่)
                 fixed_lines = 0
                 file_errors = errors_by_file.get(str(file_path), [])
-                for error in file_errors:
-                    line_index = error['line_number_B'] - 1
-                    if line_index < len(lines):
-                        # ใช้ corrected_B ถ้าแก้ไขแล้ว ไม่งั้นใช้ original_B
-                        corrected_text = error.get('corrected_B', error['original_B'])
+                insertions = []  # (insert_after, order, a_text, b_text)
+                for order, error in enumerate(file_errors):
+                    corrected_text = error.get('corrected_B', error['original_B'])
+                    is_changed = corrected_text != error['original_B']
+                    is_missing = (
+                        error.get('error_bucket') == 'missing_translation'
+                        or int(error.get('line_number_B', 0) or 0) <= 0
+                    )
 
-                        # ตรวจสอบว่าได้แก้ไขจริงหรือไม่
-                        if corrected_text != error['original_B']:
-                            # แก้ไขแล้ว - ใช้ corrected_B
+                    if is_missing:
+                        # แทรกเฉพาะรายการที่ผู้ใช้กรอก [B] แล้ว (ว่าง = ยังไม่แก้ → ข้าม)
+                        if not is_changed or not corrected_text.strip():
+                            continue
+                        b_text = corrected_text if corrected_text.lstrip().startswith('[B]') else '[B] ' + corrected_text
+                        a_src = error.get('original_A', '') or ''
+                        a_text = a_src if a_src.lstrip().startswith('[A]') else '[A] ' + a_src
+                        insert_after = int(error.get('missing_insert_after', len(lines) - 1))
+                        insertions.append((insert_after, order, a_text, b_text))
+                    else:
+                        line_index = int(error['line_number_B']) - 1
+                        if 0 <= line_index < len(lines):
                             lines[line_index] = corrected_text + '\n'
-                            fixed_lines += 1
-                        else:
-                            # ยังไม่ได้แก้ไข - ใช้ original_B (ไม่นับเป็น fixed)
-                            lines[line_index] = corrected_text + '\n'
+                            if is_changed:
+                                fixed_lines += 1
+
+                # แทรกบรรทัดที่หาย — เรียงจากตำแหน่งท้ายไปต้น เพื่อไม่ให้ index ที่เหลือรวน
+                # (รายการตำแหน่งเดียวกัน รักษาลำดับ raw เดิมไว้ผ่าน order)
+                for insert_after, _order, a_text, b_text in sorted(
+                    insertions, key=lambda t: (t[0], t[1]), reverse=True
+                ):
+                    pos = insert_after + 1
+                    if pos < 0:
+                        pos = 0
+                    lines[pos:pos] = [a_text + '\n', b_text + '\n']
+                    fixed_lines += 1
 
                 total_lines_fixed += fixed_lines
                 if fixed_lines > 0:
@@ -119,7 +151,7 @@ class FileProcessor:
                         original = error['original_B']
                         corrected = error.get('corrected_B', original)
                         is_changed = corrected != original
-                        st.write(f"  {i+1}. บรรทัด {error['line_number_B']}: {'✅ แก้ไขแล้ว' if is_changed else '❌ ยังไม่ได้แก้ไข'}")
+                        st.write(f"  {i+1}. {_loc(error)}: {'✅ แก้ไขแล้ว' if is_changed else '❌ ยังไม่ได้แก้ไข'}")
                         st.write(f"     A: `{error['original_A'][:50]}...`")
                         st.write(f"     B เดิม: `{original[:50]}...`")
                         if is_changed:

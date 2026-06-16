@@ -100,7 +100,11 @@ class NovelProofreader:
 
         # ใช้ regex_patterns จาก config
         from .config import regex_patterns
-        
+
+        # บรรทัดที่มีแต่ filler มองไม่เห็น (เช่น ㅤ U+3164) = ว่าง → ไม่นับเป็นภาษาต่างประเทศ
+        if regex_patterns.is_effectively_blank(text):
+            return {'foreign': False, 'english': False, 'numbers': False}
+
         cleaned_text = regex_patterns.clean_text(text)
 
         has_english = bool(regex_patterns.english_pattern.search(cleaned_text))
@@ -803,6 +807,9 @@ class NovelProofreader:
                     'missing_raw_line': m.raw_line_index + 1,  # 1-based
                     'missing_chapter_path': m.chapter_path,
                     'missing_best_ratio': m.best_ratio,
+                    # ตำแหน่งบรรทัดในไฟล์แปล (Input/) ที่ควรแทรกบรรทัดที่หาย "หลัง" บรรทัดนี้
+                    # ใช้ตอน fix_files แทรก [A]/[B] กลับเข้าตำแหน่งจริง (ไม่ใช่ทับบรรทัดสุดท้าย)
+                    'missing_insert_after': m.insert_after_line,
                 })
             total_missing += len(missing)
 

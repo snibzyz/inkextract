@@ -58,6 +58,10 @@ class TextClassifier:
         if skip_ab_markers and (text.startswith('[A]') or text.startswith('[B]')):
             return {'foreign': False, 'english': False, 'numbers': False}
 
+        # บรรทัดที่มีแต่ filler มองไม่เห็น (เช่น ㅤ U+3164) = ว่าง → ไม่นับเป็นภาษาต่างประเทศ
+        if regex_patterns.is_effectively_blank(text):
+            return {'foreign': False, 'english': False, 'numbers': False}
+
         cleaned_text = regex_patterns.clean_text(text)
         
         has_english = bool(regex_patterns.english_pattern.search(cleaned_text))

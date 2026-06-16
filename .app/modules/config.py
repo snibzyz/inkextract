@@ -89,6 +89,12 @@ class RegexPatterns:
         # english_pattern คลุม Latin มาตรฐาน + fullwidth Latin (Ａ-Ｚ ／ ａ-ｚ) — fullwidth Latin = CJK typography ของ ASCII Latin
         self.english_pattern = re.compile(r'[A-Za-zＡ-Ｚａ-ｚ]')
         self.chinese_pattern = re.compile(r'[一-鿿]')
+        # อักขระ "ว่างที่มองไม่เห็น" ที่ใช้คั่นบรรทัด/วรรคในต้นฉบับ (เช่น ㅤ U+3164 HANGUL FILLER)
+        # บรรทัดที่มีแต่ตัวพวกนี้ = บรรทัดว่าง ไม่ใช่ภาษาต่างประเทศจริง → ข้ามไม่ flag
+        # หมายเหตุ: ใช้เช็คเฉพาะ "บรรทัดว่างล้วน" — filler ที่ฝังในข้อความจริงยังถูกจับเป็น foreign ตามเดิม
+        self.blank_filler_pattern = re.compile(
+            '[\u115F\u1160\u3164\uFFA0\u200B-\u200D\u2060\uFEFF\u180E\u2800]'
+        )
 
         self._init_foreign_patterns()
 
@@ -175,6 +181,13 @@ class RegexPatterns:
         if self.ignore_combined is None:
             return text
         return self.ignore_combined.sub('', text)
+
+    def is_effectively_blank(self, text: str) -> bool:
+        """บรรทัด 'ว่างจริง' ไหม — ว่างหลังตัด whitespace + filler ที่มองไม่เห็นทิ้ง
+        บรรทัดที่มีแต่ ㅤ (U+3164) หรือ zero-width = บรรทัดว่าง ไม่ใช่ภาษาต่างประเทศจริง"""
+        if not isinstance(text, str):
+            return True
+        return not self.blank_filler_pattern.sub('', text).strip()
 
     def detect_foreign_chars(self, text: str) -> bool:
         """ตรวจจับอักษรต่างประเทศแบบ single-pass

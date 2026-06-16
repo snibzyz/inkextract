@@ -229,6 +229,48 @@ def test_thai_with_punctuation_no_flags():
 
 
 # ============================================================
+# Blank fillers — บรรทัด "ว่างล้วน" ต้อง NOT flag (regression: ㅤ U+3164)
+# แต่ filler ที่ฝังในข้อความจริงยังต้องถูกจับ (รักษาฟีเจอร์ลบขยะ)
+# ============================================================
+
+FILLER = chr(0x3164)   # ㅤ HANGUL FILLER
+ZWSP = chr(0x200B)
+
+
+def test_hangul_filler_only_not_foreign():
+    tc = TextClassifier()
+    flags = tc.classify_text(FILLER, skip_ab_markers=False)
+    assert flags == {'foreign': False, 'english': False, 'numbers': False}, \
+        "บรรทัดที่มีแต่ ㅤ (U+3164) ต้องนับเป็นบรรทัดว่าง ไม่ใช่ภาษาต่างประเทศ"
+
+
+def test_multiple_fillers_and_spaces_not_foreign():
+    tc = TextClassifier()
+    flags = tc.classify_text(FILLER + "  " + FILLER + "\t", skip_ab_markers=False)
+    assert flags == {'foreign': False, 'english': False, 'numbers': False}
+
+
+def test_zwsp_only_line_not_foreign():
+    tc = TextClassifier()
+    flags = tc.classify_text(ZWSP, skip_ab_markers=False)
+    assert flags == {'foreign': False, 'english': False, 'numbers': False}
+
+
+def test_filler_with_real_chinese_still_foreign():
+    """ㅤ ติดกับข้อความจีนจริง = บรรทัดไม่ว่าง → ยังต้อง flag foreign"""
+    tc = TextClassifier()
+    flags = tc.classify_text(FILLER + "你好", skip_ab_markers=False)
+    assert flags['foreign'] is True
+
+
+def test_embedded_zwsp_in_thai_still_foreign():
+    """รักษาพฤติกรรมเดิม: ZWSP ฝังในข้อความไทยจริง ยังถูกจับเป็น foreign เพื่อให้ลบขยะ"""
+    tc = TextClassifier()
+    flags = tc.classify_text("เขา" + ZWSP + "เดิน", skip_ab_markers=False)
+    assert flags['foreign'] is True
+
+
+# ============================================================
 # Mixed — flags ที่ทับซ้อนกัน
 # ============================================================
 

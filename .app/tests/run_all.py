@@ -16,6 +16,7 @@ TEST_MODULES = [
     'test_core',
     'test_classifier',
     'test_manuscript_checker',
+    'test_missing_line_detector',
     'test_vocab_processor',
     'test_proofreader',
     'test_merge_separate',
