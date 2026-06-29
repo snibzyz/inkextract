@@ -49,9 +49,8 @@ __pycache__/
 # .config/exclude.txt → keep (default template)
 
 # ============================================================
-# IDE / editor / Claude state
+# IDE / editor state
 # ============================================================
-.claude/
 .vscode/
 .idea/
 *.swp
