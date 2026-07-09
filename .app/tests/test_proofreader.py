@@ -68,6 +68,29 @@ def test_clean_text_idempotent():
     assert regex_patterns.clean_text(text) == text
 
 
+def test_clean_text_keeps_content_inside_cjk_brackets():
+    """Regression: ห้ามกลืนเนื้อหาข้างใน 【…】/（…） — โน้ตจีนของผู้แต่งต้องรอดไปถึงขั้นตรวจ"""
+    assert '时间比例' in regex_patterns.clean_text('【时间比例：一比十。】')
+    assert '凤溪国国号为汉' in regex_patterns.clean_text('（凤溪国国号为汉。）')
+
+
+def test_detect_foreign_chinese_inside_brackets_flagged():
+    """Regression: บรรทัดจีน (ตัวย่อ) ที่ครอบวงเล็บ CJK ทั้งบรรทัด ต้องถูก flag เป็น foreign"""
+    for line in (
+        '【道果：大日帝主（六司）、酆都天曹（八极）、金乌仙体（七元）……】',
+        '（进士只是储官，授官要经吏部关试。例如韩愈，虽中了进士。）',
+        '（凤溪国国号为汉。）',
+        '【龍鳳呈祥】',  # ตัวเต็มในวงเล็บก็ต้องโดนเหมือนกัน
+    ):
+        assert regex_patterns.detect_foreign_chars(regex_patterns.clean_text(line)) is True
+
+
+def test_detect_foreign_thai_inside_brackets_passes():
+    """ไทยล้วนในวงเล็บ CJK (แปลแล้ว) — ไม่ flag"""
+    cleaned = regex_patterns.clean_text('【ลิขิตเซียน: กายาราชามนุษย์】')
+    assert regex_patterns.detect_foreign_chars(cleaned) is False
+
+
 def test_english_pattern():
     assert regex_patterns.english_pattern.search('hello123')
     assert not regex_patterns.english_pattern.search('สวัสดี你好')

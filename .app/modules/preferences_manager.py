@@ -39,11 +39,7 @@ class PreferencesManager:
                     "check_translation_vocab": False,
                     "selected_vocab_file": "",
                     "ignore_patterns": [
-                        "【.*?】",
-                        "・",
-                        "（.*?）",
-                        "「.*?」",
-                        "『.*?』"
+                        "[【】・（）「」『』]"
                     ]
                 },
                 "normal_mode": {
