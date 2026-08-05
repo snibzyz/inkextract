@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from typing import Optional, Iterable
 
 # ===== ธีมสีส้ม INKEXTRACT — aligned กับ INKREALM amber (#F59E0B)
-# = single source of truth ของตระกูล INK · ตาม Z:\Mega Project\CLAUDE.md §4 =====
+# = single source of truth ของตระกูล INK · ตาม E:\Mega Project\CLAUDE.md §4 =====
 ORANGE_PRIMARY = "#F59E0B"   # amber-500 — primary brand
 ORANGE_DARK = "#D97706"      # amber-600 — hover/active
 ORANGE_LIGHT = "#FBBF24"     # amber-400 — accent/highlight
