@@ -173,7 +173,7 @@ def _ab_step_state(proofreader, export_files_exist):
 ┌─ โปรเจกต์ ─────────────────────────────────────────────
 │
 │ ┌─ Active: Workspace (เดิม) ──────────────────────┐
-│ │  Z:\Mega Project\INKEXTRACT\workspace             │
+│ │  E:\Mega Project\INKEXTRACT\workspace             │
 │ │  [เปิดโฟลเดอร์]  [เปลี่ยนชื่อ]                    │
 │ └────────────────────────────────────────────────┘
 │

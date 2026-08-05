@@ -272,11 +272,11 @@ Phase E (week 6): file management tabs + final polish
 
 ```powershell
 # 1. ดู template ที่มีอยู่
-cd "Z:\Mega Project\.shared"
+cd "E:\Mega Project\.shared"
 cat checklist-new-app.md
 
 # 2. Scaffold .app/shell/
-cd "Z:\Mega Project\INKEXTRACT\.app"
+cd "E:\Mega Project\INKEXTRACT\.app"
 mkdir shell
 xcopy /E /I "..\..\.shared\config\*" shell\
 xcopy /E /I "..\..\.shared\src\*" shell\src\
