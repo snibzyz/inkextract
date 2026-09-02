@@ -397,9 +397,43 @@ class VocabProcessor:
         self,
         vocab_list: List[Dict[str, str]],
         filename: str = "vocab_pipeline.txt",
+        chunk_size: int = 0,
         **opts,
     ) -> str:
-        """รัน pipeline + เขียนไฟล์ — ถ้า drop_extra_columns=True จะเขียนแค่ CN+TH"""
+        """รัน pipeline + เขียนไฟล์ — ถ้า drop_extra_columns=True จะเขียนแค่ CN+TH
+
+        chunk_size > 0 จะเขียนไฟล์ย่อยเพิ่มให้ด้วย (คืนเฉพาะ path ของไฟล์รวม)
+        ถ้าต้องการรายชื่อไฟล์ย่อยด้วย ใช้ create_pipeline_output_with_chunks
+        """
+        master, _ = self.create_pipeline_output_with_chunks(
+            vocab_list, filename=filename, chunk_size=chunk_size, **opts,
+        )
+        return master
+
+    def create_pipeline_output_with_chunks(
+        self,
+        vocab_list: List[Dict[str, str]],
+        filename: str = "vocab_pipeline.txt",
+        chunk_size: int = 0,
+        **opts,
+    ) -> Tuple[str, List[str]]:
+        """รัน pipeline + เขียนไฟล์รวม (เสมอ) + ไฟล์ย่อยแบ่งทีละ chunk_size คำ
+
+        ยึดพฤติกรรมเดียวกับการแบ่ง chunk ของแท็บ "ตรวจสอบและแก้ไข":
+          - ไฟล์รวม `<filename>` เขียนทุกครั้ง = ข้อมูลเต็ม (single source of truth)
+          - ถ้า chunk_size > 0 และจำนวนคำมากกว่า chunk_size → เขียนไฟล์ย่อย
+            `<stem>_001.txt`, `<stem>_002.txt`, ... ไฟล์ละไม่เกิน chunk_size คำ
+            (1 คำ = 1 บรรทัด จึงไม่มีการตัดกลางรายการ)
+          - ลบไฟล์ย่อยรอบก่อนของชื่อเดียวกันทิ้งก่อนเขียนใหม่ — กันของเก่าปนของใหม่
+
+        Returns:
+            (path ของไฟล์รวม, list path ของไฟล์ย่อย — ว่างถ้าไม่ได้แบ่ง)
+        """
+        from modules.error_chunker import (
+            split_errors_into_parts, build_part_filename,
+        )
+
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         output = self.output_dir / filename
         drop_extra = bool(opts.get("drop_extra_columns", False))
         result = self.apply_pipeline(vocab_list, **opts)
@@ -407,8 +441,37 @@ class VocabProcessor:
             rows = [[it.get('cn', ''), it.get('th', '')] for it in result]
         else:
             rows = [self._row_columns(it) for it in result]
+
+        # ลบไฟล์ย่อยรอบก่อน (กันไฟล์เก่าที่เกินจำนวนรอบใหม่ค้างอยู่)
+        for old_part in self._existing_part_files(filename):
+            try:
+                old_part.unlink()
+            except OSError:
+                pass
+
         self._write_tsv(output, rows, header=False)
-        return str(output)
+
+        part_paths: List[str] = []
+        if chunk_size and int(chunk_size) > 0:
+            chunks = split_errors_into_parts(rows, int(chunk_size))
+            total_parts = len(chunks)
+            if total_parts > 1:
+                for part_index, chunk_rows in enumerate(chunks):
+                    part_name = build_part_filename(filename, part_index, total_parts)
+                    part_path = self.output_dir / part_name
+                    self._write_tsv(part_path, chunk_rows, header=False)
+                    part_paths.append(str(part_path))
+        return str(output), part_paths
+
+    def _existing_part_files(self, filename: str) -> List[Path]:
+        """หาไฟล์ย่อย `<stem>_001.txt` ... ของไฟล์รวมชื่อ filename ที่มีอยู่แล้ว"""
+        if not self.output_dir.exists():
+            return []
+        stem = Path(filename).stem
+        ext = Path(filename).suffix
+        pattern = re.compile(rf'^{re.escape(stem)}_\d{{3}}{re.escape(ext)}$')
+        return [p for p in self.output_dir.glob(f"{stem}_*{ext}")
+                if pattern.match(p.name)]
 
     def get_enhanced_statistics(self, vocab_list: List[Dict[str, str]]) -> Dict:
         """สถิติครอบคลุม — แยกชัด: คู่ซ้ำเป๊ะ vs CN ขัดแย้ง"""

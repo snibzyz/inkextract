@@ -96,7 +96,8 @@ class PreferencesManager:
             "vocab_settings": {
                 "mode": "TXT Mode",
                 "tsv_frequency": 2,
-                "tsv_include_duplicates": False
+                "tsv_include_duplicates": False,
+                "export_chunk_size": 500
             },
             "last_updated": datetime.now().isoformat()
         }

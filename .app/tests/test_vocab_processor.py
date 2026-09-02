@@ -729,6 +729,85 @@ def test_create_pipeline_output_writes_filename():
         assert text.startswith('BBB\t'), f"first line should be BBB: {text[:30]}"
 
 
+def test_create_pipeline_output_chunk_size_splits_files():
+    """chunk_size > 0 → ไฟล์รวม + ไฟล์ย่อยไฟล์ละไม่เกิน chunk_size บรรทัด"""
+    with tempfile.TemporaryDirectory() as td:
+        vp = VocabProcessor()
+        vp.output_dir = Path(td)
+        items = [{'cn': f'C{i:04d}', 'th': f'T{i:04d}'} for i in range(250)]
+        master, parts = vp.create_pipeline_output_with_chunks(
+            items, filename="vocab_chunk.txt", chunk_size=100, sort_by='none',
+        )
+        assert Path(master).exists()
+        assert len(Path(master).read_text(encoding='utf-8').strip().splitlines()) == 250
+        assert [Path(p).name for p in parts] == [
+            "vocab_chunk_001.txt", "vocab_chunk_002.txt", "vocab_chunk_003.txt",
+        ]
+        counts = [len(Path(p).read_text(encoding='utf-8').strip().splitlines())
+                  for p in parts]
+        assert counts == [100, 100, 50]
+        # ต่อกันแล้วต้องได้เท่าไฟล์รวมเป๊ะ
+        joined = "".join(Path(p).read_text(encoding='utf-8') for p in parts)
+        assert joined == Path(master).read_text(encoding='utf-8')
+
+
+def test_create_pipeline_output_chunk_size_zero_no_parts():
+    """chunk_size = 0 → ไฟล์รวมอย่างเดียว ไม่มีไฟล์ย่อย"""
+    with tempfile.TemporaryDirectory() as td:
+        vp = VocabProcessor()
+        vp.output_dir = Path(td)
+        items = [{'cn': f'C{i}', 'th': f'T{i}'} for i in range(50)]
+        master, parts = vp.create_pipeline_output_with_chunks(
+            items, filename="vocab_nochunk.txt", chunk_size=0, sort_by='none',
+        )
+        assert parts == []
+        assert list(Path(td).glob("vocab_nochunk_*.txt")) == []
+        assert Path(master).exists()
+
+
+def test_create_pipeline_output_chunk_size_below_total_no_split():
+    """คำน้อยกว่า chunk_size → ไม่แบ่ง (ไฟล์รวมไฟล์เดียว)"""
+    with tempfile.TemporaryDirectory() as td:
+        vp = VocabProcessor()
+        vp.output_dir = Path(td)
+        items = [{'cn': f'C{i}', 'th': f'T{i}'} for i in range(10)]
+        _, parts = vp.create_pipeline_output_with_chunks(
+            items, filename="small.txt", chunk_size=500, sort_by='none',
+        )
+        assert parts == []
+
+
+def test_create_pipeline_output_removes_stale_parts():
+    """รอบใหม่ได้ไฟล์ย่อยน้อยลง → ไฟล์ย่อยรอบเก่าที่เกินต้องถูกลบ"""
+    with tempfile.TemporaryDirectory() as td:
+        vp = VocabProcessor()
+        vp.output_dir = Path(td)
+        many = [{'cn': f'C{i:04d}', 'th': f'T{i:04d}'} for i in range(250)]
+        vp.create_pipeline_output_with_chunks(
+            many, filename="v.txt", chunk_size=100, sort_by='none')
+        assert len(list(Path(td).glob("v_*.txt"))) == 3
+
+        few = [{'cn': f'C{i:04d}', 'th': f'T{i:04d}'} for i in range(120)]
+        _, parts = vp.create_pipeline_output_with_chunks(
+            few, filename="v.txt", chunk_size=100, sort_by='none')
+        assert len(parts) == 2
+        assert sorted(p.name for p in Path(td).glob("v_*.txt")) == [
+            "v_001.txt", "v_002.txt",
+        ]
+
+
+def test_create_pipeline_output_backward_compatible_signature():
+    """เรียกแบบเดิม (ไม่ส่ง chunk_size) ต้องยังคืน path ของไฟล์รวมเหมือนเดิม"""
+    with tempfile.TemporaryDirectory() as td:
+        vp = VocabProcessor()
+        vp.output_dir = Path(td)
+        path = vp.create_pipeline_output(
+            _make_items(), filename="compat.txt", sort_by='none')
+        assert Path(path).name == "compat.txt"
+        assert Path(path).exists()
+        assert list(Path(td).glob("compat_*.txt")) == []
+
+
 # ============================================================
 # Test runner
 # ============================================================

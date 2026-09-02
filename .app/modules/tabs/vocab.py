@@ -7,11 +7,61 @@
     - flow: อัปโหลด → ภาพรวม → เลือกแม่แบบหรือปรับแต่ง → สร้าง
 """
 from __future__ import annotations
+import math
 from pathlib import Path
 import streamlit as st
 import pandas as pd
 
 from modules import paths, ui
+from modules.preferences_manager import preferences_manager
+
+
+# ── ตั้งค่าส่งออก — เก็บถาวรใน .config/user_preferences.json ──
+_EXPORT_PREFS_CATEGORY = "vocab_settings"
+_EXPORT_CHUNK_KEY = "export_chunk_size"
+_DEFAULT_CHUNK_SIZE = 500
+
+
+def _saved_chunk_size() -> int:
+    """ค่าที่ผู้ใช้ตั้งไว้ล่าสุด — ค่าเริ่มต้น 500 คำต่อไฟล์"""
+    try:
+        value = preferences_manager.get_setting(
+            _EXPORT_PREFS_CATEGORY, _EXPORT_CHUNK_KEY, _DEFAULT_CHUNK_SIZE)
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return _DEFAULT_CHUNK_SIZE
+
+
+def _render_export_settings(n_out: int) -> int:
+    """แผงตั้งค่าส่งออก — แบ่งไฟล์ทีละกี่คำ (เทียบเท่าแท็บตรวจสอบและแก้ไข)"""
+    saved = _saved_chunk_size()
+    with st.expander("ตั้งค่าส่งออก", expanded=True):
+        chunk_size = int(st.number_input(
+            "แบ่งไฟล์ทีละกี่คำ — 0 = ไม่แบ่ง",
+            min_value=0, max_value=100000, step=50, value=saved,
+            help="เขียนไฟล์รวมเสมอ + ถ้าตั้ง > 0 จะแบ่งเป็น `..._001.txt`, `_002.txt`, ... "
+                 "ไฟล์ละไม่เกินจำนวนคำที่ตั้ง (1 คำ = 1 บรรทัด จึงไม่ตัดกลางรายการ) "
+                 "ค่า ~500 คำ/ไฟล์ พอดี token AI",
+            key="vc_export_chunk_size",
+        ))
+        if chunk_size != saved:
+            preferences_manager.set_setting(
+                _EXPORT_PREFS_CATEGORY, _EXPORT_CHUNK_KEY, chunk_size)
+            preferences_manager.save_preferences()
+
+        if chunk_size <= 0:
+            st.caption("ไม่แบ่งไฟล์ — ได้ไฟล์รวมไฟล์เดียว")
+        elif n_out > chunk_size:
+            n_parts = math.ceil(n_out / chunk_size)
+            st.caption(
+                f"จะได้ไฟล์รวม 1 ไฟล์ + ไฟล์ย่อย {n_parts} ไฟล์ "
+                f"(ไฟล์ละไม่เกิน {chunk_size:,} คำ)"
+            )
+        else:
+            st.caption(
+                f"คำที่จะส่งออก ({n_out:,}) ไม่เกิน {chunk_size:,} — ได้ไฟล์เดียว ไม่แบ่ง"
+            )
+    return chunk_size
 
 
 # ============================================================
@@ -638,6 +688,8 @@ def _render_result(vp, all_vocab: list) -> None:
     n_out = len(preview)
     filename = _autoname(opts, st.session_state.vc_active_preset)
 
+    chunk_size = _render_export_settings(n_out)
+
     banner_col, btn_col = st.columns([3, 1])
     with banner_col:
         empty = " empty" if n_out == 0 else ""
@@ -656,8 +708,18 @@ def _render_result(vp, all_vocab: list) -> None:
                      disabled=(n_out == 0), key="vc_generate"):
             with st.spinner("กำลังสร้างไฟล์..."):
                 try:
-                    output = vp.create_pipeline_output(all_vocab, filename=filename, **opts)
-                    ui.success(f"สำเร็จ — `{Path(output).name}` ({n_out:,} บรรทัด)")
+                    output, parts = vp.create_pipeline_output_with_chunks(
+                        all_vocab, filename=filename,
+                        chunk_size=chunk_size, **opts,
+                    )
+                    if parts:
+                        ui.success(
+                            f"สำเร็จ — `{Path(output).name}` ({n_out:,} บรรทัด) "
+                            f"+ ไฟล์ย่อย {len(parts)} ไฟล์ "
+                            f"(`{Path(parts[0]).name}` ... `{Path(parts[-1]).name}`)"
+                        )
+                    else:
+                        ui.success(f"สำเร็จ — `{Path(output).name}` ({n_out:,} บรรทัด)")
                     st.toast("สร้างไฟล์สำเร็จ")
                 except Exception as e:
                     ui.error(f"สร้างไฟล์ไม่สำเร็จ: {e}")
