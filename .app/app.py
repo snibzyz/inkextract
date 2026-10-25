@@ -17,10 +17,14 @@ from modules import manuscript_checker
 from modules.tabs import manuscript as tab_manuscript_module
 from modules.tabs import project as tab_project_module
 from modules import update_banner
+from modules.streamlit_compat import raise_ws_send_queue_limit
 
 # ตั้งค่าหน้าและธีม INKEXTRACT — ปล่อย page_icon ว่างให้ ui.page_setup
 # auto-resolve โลโก้ inkideaex.png (อยู่ใน .app/) มาเป็น tab icon ของ browser
 ui.page_setup(page_title=ui.APP_NAME)
+
+# กันหน้าค้าง "Stop" ถาวรเมื่อ rerun เดียวสร้าง element เยอะ (Streamlit Starlette คิวส่ง 500) — ดู streamlit_compat
+raise_ws_send_queue_limit()
 
 
 @st.cache_data(ttl=30, show_spinner=False)

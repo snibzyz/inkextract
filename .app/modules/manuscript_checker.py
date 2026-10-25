@@ -13,9 +13,27 @@ from pathlib import Path
 from statistics import mean
 from typing import List, Dict, Optional, Iterable, Tuple
 
-# detect 3-4 หลักเป็นเลขตอน
-_NUMBER_RE = re.compile(r'(\d{3,4})')
-_SERIES_RE = re.compile(r'(.+?)\s*(\d{3,4})')
+# เลขตอน = กลุ่มตัวเลขติดกันทั้งกลุ่ม (ห้ามตัดกลางกลุ่ม) · ข้อความก่อนหน้า = prefix — เลือกด้วย _chapter_run
+# บั๊กเดิม: (.+?)\s*(\d{3,4}) บังคับ prefix อย่างน้อย 1 ตัว + รับแค่ 3–4 หลัก
+#   → '1000.txt' = prefix '1' + ตอน 0 (ตอน 1000 ขึ้นไปเรียงปนกับตอนต้น ๆ) · '0001.txt' padding 3
+#   · '12345' เหลือ 4 หลัก · 'ตอนที่ 12.txt' ไม่นับเป็นตอน (ชุดไม่เติม 0 ตอน 1–99 ไม่ถูก renumber)
+_RUN_RE = re.compile(r'\d+')
+_VERSION_MARK_RE = re.compile(r'(?<![A-Za-z])[vV]$')   # '_v1', ' v2' = เลขเวอร์ชัน ไม่ใช่เลขตอน
+
+
+def _chapter_run(name: str) -> Optional[re.Match]:
+    """กลุ่มตัวเลขที่เป็นเลขตอนของชื่อไฟล์ (ไม่รวมนามสกุล)
+
+    1. มีกลุ่ม 3 หลักขึ้นไป → กลุ่มแรก ('Chapter_0001_v1' = 1 · '0001 ปี 2024' = 1)
+    2. มีแต่ 1–2 หลัก → กลุ่มสุดท้าย — เลขเล่ม/ภาคอยู่หน้าเลขตอน ('Vol2 ตอนที่ 5' = 5 · 'เล่ม 12 ตอนที่ 5' = 5)
+    ไม่นับเลขที่ติดหลัง v (เลขเวอร์ชัน)
+    """
+    stem = Path(name).stem
+    runs = [m for m in _RUN_RE.finditer(stem) if not _VERSION_MARK_RE.search(stem[:m.start()])]
+    if not runs:
+        return None
+    long_runs = [m for m in runs if len(m.group()) >= 3]
+    return long_runs[0] if long_runs else runs[-1]
 
 # threshold default: ไฟล์ที่เล็กกว่า average × THRESHOLD_RATIO ถูก flag
 DEFAULT_THRESHOLD_RATIO = 0.3
@@ -55,22 +73,43 @@ class ScanResult:
 
 def _parse_filename(path: Path) -> FileEntry:
     name = path.name
-    series_match = _SERIES_RE.search(name)
-    if series_match:
-        series = series_match.group(1).strip()
-        number = int(series_match.group(2))
-        padding = len(series_match.group(2))
-    else:
-        num_match = _NUMBER_RE.search(name)
-        series = None
-        number = int(num_match.group(1)) if num_match else None
-        padding = len(num_match.group(1)) if num_match else None
+    m = _chapter_run(name)
+    number = int(m.group()) if m else None
+    padding = len(m.group()) if m else None
+    series = (name[:m.start()].strip() or None) if m else None
     try:
         size = path.stat().st_size
     except OSError:
         size = 0
     return FileEntry(filename=name, path=path, size=size,
                      number=number, padding=padding, series=series)
+
+
+def _zero_pad_widths(entries: Iterable[FileEntry]) -> Dict[Optional[str], int]:
+    """ความกว้างเลขแบบเติม 0 ของแต่ละ prefix — นับจากไฟล์ที่เลขขึ้นต้นด้วย 0 (ค่าที่เจอบ่อยสุด)
+
+    prefix ที่ไม่มีไฟล์เลขขึ้นต้นด้วย 0 เลย = ชุดไม่เติม 0 (เช่น 'ตอนที่ 998' … 'ตอนที่ 1000') → ไม่อยู่ใน dict
+    """
+    counts: Dict[Optional[str], Dict[int, int]] = {}
+    for e in entries:
+        m = _chapter_run(e.filename)
+        if m and len(m.group()) > 1 and m.group()[0] == '0':
+            c = counts.setdefault(e.series, {})
+            c[len(m.group())] = c.get(len(m.group()), 0) + 1
+    return {s: max(c.items(), key=lambda kv: (kv[1], kv[0]))[0] for s, c in counts.items()}
+
+
+def _renumbered_name(e: FileEntry, new_number: int, pad_widths: Dict[Optional[str], int]) -> str:
+    """แทนเฉพาะกลุ่มเลขตอนของไฟล์ (ตำแหน่งเดียวกับที่ _parse_filename อ่าน) ด้วยเลขใหม่
+
+    เลขเดิมขึ้นต้นด้วย 0 → คงความกว้างของไฟล์นั้น ('a 0006' ยังเป็น 4 หลัก)
+    เลขเดิมไม่ขึ้นต้นด้วย 0 (เช่น 1000) → ใช้ความกว้างของ prefix เดียวกัน ('0001…2000': 1000→999 = '0999'
+    · 'ตอนที่ 998…1000' ไม่เติม 0: 1000→999 = '999' ไม่ใช่ '0999')
+    """
+    m = _chapter_run(e.filename)
+    digits = m.group()
+    width = len(digits) if digits[0] == '0' else pad_widths.get(e.series, 0)
+    return e.filename[:m.start()] + str(new_number).zfill(width) + e.filename[m.end():]
 
 
 def _detect_padding(entries: Iterable[FileEntry]) -> int:
@@ -144,7 +183,8 @@ def process(scan: ScanResult, files_to_remove: Iterable[str],
     หลักการ renumber:
         - detect จาก "เลข" อย่างเดียว ไม่สนใจ prefix → ทุกไฟล์ที่มีเลขรวมเป็นกลุ่มเดียว
         - prefix ของแต่ละไฟล์เดิมถูกเก็บไว้ (เปลี่ยนเฉพาะตัวเลข)
-        - padding ใช้ของไฟล์เดิมแต่ละตัว (กัน "Chapter 001" → "Chapter 02" ผิดเพี้ยน)
+        - padding: เลขขึ้นต้นด้วย 0 ใช้ของไฟล์เดิมแต่ละตัว (กัน "Chapter 001" → "Chapter 02")
+          · ไม่ขึ้นต้นด้วย 0 (ตอน 1000+) ใช้ของ prefix เดียวกัน — ดู _renumbered_name
         - raw/ และ raw/old/ ถูกล้างทุกครั้งก่อน process — กันไฟล์ค้างจากรอบก่อน
     """
     report = ProcessReport()
@@ -191,19 +231,12 @@ def process(scan: ScanResult, files_to_remove: Iterable[str],
     if kept:
         # เริ่มเลขจากเลขแรกสุดของไฟล์เดิมที่เหลือ (รักษาช่วงเลขเดิม)
         start_number = kept[0].number
-        global_padding = scan.detected_padding
+        pad_widths = _zero_pad_widths(numbered)
 
         for i, e in enumerate(kept):
             new_number = start_number + i
             old_filename = e.filename
-            # ใช้ padding ของไฟล์เดิมแต่ละตัว — กันชนกรณี mix padding
-            old_padding = e.padding or global_padding
-            new_name = re.sub(
-                r'\d{' + str(old_padding) + r'}',
-                str(new_number).zfill(old_padding),
-                old_filename,
-                count=1,
-            )
+            new_name = _renumbered_name(e, new_number, pad_widths)
             try:
                 shutil.copy2(e.path, raw_dir / new_name)
                 report.renamed.append((old_filename, new_name))
@@ -211,3 +244,36 @@ def process(scan: ScanResult, files_to_remove: Iterable[str],
                 report.errors.append(f"copy {old_filename} -> {new_name}: {exc}")
 
     return report
+
+
+# ============================================================
+# Explorer paging — แท็บตรวจต้นฉบับ render ทีละหน้า
+# ============================================================
+# render checkbox + ปุ่มทุกไฟล์ใน Raw หลายพันตอน = element หลายพันชิ้นต่อ rerun
+# → Streamlit (Starlette) คิวส่งเต็ม → หน้าเว็บค้าง "Stop" ถาวร (ดู modules/streamlit_compat.py)
+
+EXPLORER_PAGE_SIZE = 50
+
+
+def page_count(total: int, page_size: int = EXPLORER_PAGE_SIZE) -> int:
+    """จำนวนหน้า (อย่างน้อย 1 แม้ไม่มีไฟล์)"""
+    return max(1, -(-max(0, total) // page_size))
+
+
+def page_of_index(index: int, page_size: int = EXPLORER_PAGE_SIZE) -> int:
+    """หน้าที่มีรายการลำดับ index (0-based)"""
+    return max(0, index) // page_size
+
+
+def page_bounds(page: int, total: int, page_size: int = EXPLORER_PAGE_SIZE) -> Tuple[int, int]:
+    """ช่วง [start, end) ของหน้า page (0-based) — page นอกช่วงถูกบีบให้อยู่ในช่วง"""
+    page = min(max(0, page), page_count(total, page_size) - 1)
+    start = page * page_size
+    return start, min(max(0, total), start + page_size)
+
+
+def merge_page_selection(selected: Iterable[str], visible: Iterable[str],
+                         checked_visible: Iterable[str]) -> set:
+    """รวมการเลือก: ไฟล์นอกหน้านี้คงค่าเดิม · ไฟล์ในหน้านี้ใช้ค่าจาก checkbox"""
+    visible = set(visible)
+    return (set(selected) - visible) | (set(checked_visible) & visible)

@@ -345,8 +345,160 @@ def test_process_per_file_padding_preserved():
 
 
 # ============================================================
+# ตอน 1000 ขึ้นไป (บั๊กเดิม: '1000.txt' = prefix '1' + ตอน 0 · จำกัด 4 หลัก)
+# ============================================================
+
+def _parse(name):
+    return mc._parse_filename(Path(name))
+
+
+def test_parse_reads_whole_digit_run_1000_plus():
+    e = _parse('1000.txt')
+    assert (e.number, e.padding, e.series) == (1000, 4, None)
+    e = _parse('0001.txt')
+    assert (e.number, e.padding, e.series) == (1, 4, None)
+    e = _parse('12345.txt')
+    assert (e.number, e.padding) == (12345, 5)
+    e = _parse('ตอนที่ 1000.txt')
+    assert (e.number, e.series) == (1000, 'ตอนที่')
+    e = _parse('ก็แค่ รปภ กะดึก 2001.txt')
+    assert (e.number, e.series) == (2001, 'ก็แค่ รปภ กะดึก')
+
+
+def test_parse_first_run_wins_and_short_numbers_ignored():
+    assert _parse('Chapter_0001_v1.txt').number == 1          # v1 = 1 หลัก ไม่นับ
+    assert _parse('0001 ปี 2024.txt').number == 1             # เลขตอนนำหน้า
+    assert _parse('README.txt').number is None
+
+
+def test_parse_short_numbers_1_to_2_digits():
+    """ชุดไม่เติม 0 ตอน 1–99 ต้องนับเป็นตอนด้วย — เลือกกลุ่มสุดท้าย · ไม่นับเลขเวอร์ชัน"""
+    assert (_parse('ตอนที่ 12.txt').number, _parse('ตอนที่ 12.txt').series) == (12, 'ตอนที่')
+    assert (_parse('1.txt').number, _parse('1.txt').padding) == (1, 1)
+    assert _parse('ตอนที่ 5 v1.txt').number == 5               # เลขเวอร์ชันไม่นับ
+    assert _parse('ตอนที่ 5_v2.txt').number == 5
+    assert _parse('Vol2 ตอนที่ 5.txt').number == 5             # เลขเล่มอยู่หน้า
+    assert _parse('เล่ม 12 ตอนที่ 5.txt').number == 5
+    assert _parse('Vol2 ตอนที่ 500.txt').number == 500         # มี 3 หลัก → กลุ่ม 3 หลักชนะ
+    assert _parse('v3.txt').number is None                     # มีแต่เลขเวอร์ชัน
+
+
+def test_scan_sorts_unpadded_1_to_1000():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        names = ['ตอนที่ 1000.txt', 'ตอนที่ 10.txt', 'ตอนที่ 2.txt', 'ตอนที่ 100.txt', 'ตอนที่ 1.txt', 'ตอนที่ 99.txt']
+        _make_files(base, {n: 1000 for n in names})
+        order = [e.number for e in sorted(mc.scan_directory(base).files, key=lambda e: e.number)]
+        assert order == [1, 2, 10, 99, 100, 1000]
+
+
+def test_process_renumber_unpadded_short_numbers():
+    got = _renumber(['ตอนที่ 1.txt', 'ตอนที่ 2.txt', 'ตอนที่ 3.txt', 'ตอนที่ 10.txt'], ['ตอนที่ 2.txt'])
+    assert got == {'ตอนที่ 1.txt': 'ตอนที่ 1.txt', 'ตอนที่ 2.txt': 'ตอนที่ 3.txt', 'ตอนที่ 3.txt': 'ตอนที่ 10.txt'}
+
+
+def test_process_renumber_padded_2_digits():
+    got = _renumber(['01.txt', '02.txt', '10.txt'], ['01.txt'])
+    assert got == {'02.txt': '02.txt', '03.txt': '10.txt'}
+
+
+def test_scan_sorts_across_1000_boundary():
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        names = ['0998.txt', '0999.txt', '1000.txt', '1001.txt', '2000.txt', '0001.txt']
+        _make_files(base, {n: 1000 for n in names})
+        scan = mc.scan_directory(base)
+        order = [e.filename for e in sorted(scan.files, key=lambda e: e.number)]
+        assert order == ['0001.txt', '0998.txt', '0999.txt', '1000.txt', '1001.txt', '2000.txt']
+        assert scan.detected_padding == 4
+
+
+def _renumber(names, remove):
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        src = base / 'src'
+        src.mkdir()
+        out = base / 'out'
+        for n in names:
+            (src / n).write_text(n, encoding='utf-8')   # เนื้อหา = ชื่อเดิม ไว้ตรวจว่าไฟล์ไหนไปไหน
+        report = mc.process(mc.scan_directory(src), remove, out)
+        assert report.errors == []
+        return {p.name: p.read_text(encoding='utf-8') for p in (out / 'raw').glob('*.txt')}
+
+
+def test_process_renumber_padded_across_1000():
+    got = _renumber(['0998.txt', '0999.txt', '1000.txt', '1001.txt'], ['0999.txt'])
+    assert got == {'0998.txt': '0998.txt', '0999.txt': '1000.txt', '1000.txt': '1001.txt'}
+
+
+def test_process_renumber_unpadded_across_1000():
+    """ชุดไม่เติม 0 — 1000→999 ต้องเป็น '999' ไม่ใช่ '0999'"""
+    names = ['ตอนที่ 998.txt', 'ตอนที่ 999.txt', 'ตอนที่ 1000.txt', 'ตอนที่ 1001.txt']
+    got = _renumber(names, ['ตอนที่ 998.txt'])
+    assert got == {
+        'ตอนที่ 999.txt': 'ตอนที่ 999.txt',
+        'ตอนที่ 1000.txt': 'ตอนที่ 1000.txt',
+        'ตอนที่ 1001.txt': 'ตอนที่ 1001.txt',
+    }
+    got = _renumber(names, ['ตอนที่ 999.txt'])
+    assert got == {
+        'ตอนที่ 998.txt': 'ตอนที่ 998.txt',
+        'ตอนที่ 999.txt': 'ตอนที่ 1000.txt',
+        'ตอนที่ 1000.txt': 'ตอนที่ 1001.txt',
+    }
+
+
+def test_process_renumber_upward_past_999_keeps_digits():
+    """เลขใหม่ยาวกว่าเดิม (999 → 1000) ห้ามถูกตัด"""
+    got = _renumber(['a 998.txt', 'a 999.txt'], [])
+    assert got == {'a 998.txt': 'a 998.txt', 'a 999.txt': 'a 999.txt'}
+    got = _renumber(['x 0999.txt', 'x 1500.txt'], [])   # มีช่องว่างของเลข → ต่อเนื่องเป็น 0999, 1000
+    assert got == {'x 0999.txt': 'x 0999.txt', 'x 1000.txt': 'x 1500.txt'}
+
+
+# ============================================================
 # Test runner
 # ============================================================
+
+# ============================================================
+# Explorer paging (แท็บตรวจต้นฉบับ render ทีละหน้า — กันหน้าเว็บค้าง)
+# ============================================================
+
+def test_page_count_rounds_up_and_min_one():
+    assert mc.page_count(0) == 1
+    assert mc.page_count(1) == 1
+    assert mc.page_count(50) == 1
+    assert mc.page_count(51) == 2
+    assert mc.page_count(2000) == 40
+    assert mc.page_count(10, page_size=3) == 4
+
+
+def test_page_bounds_last_page_partial_and_clamped():
+    assert mc.page_bounds(0, 120) == (0, 50)
+    assert mc.page_bounds(2, 120) == (100, 120)
+    assert mc.page_bounds(99, 120) == (100, 120)   # หน้าเกิน = หน้าสุดท้าย
+    assert mc.page_bounds(-3, 120) == (0, 50)
+    assert mc.page_bounds(0, 0) == (0, 0)
+
+
+def test_page_of_index():
+    assert mc.page_of_index(0) == 0
+    assert mc.page_of_index(49) == 0
+    assert mc.page_of_index(50) == 1
+    assert mc.page_of_index(1999) == 39
+
+
+def test_merge_page_selection_keeps_other_pages():
+    selected = {'0001.txt', '0060.txt', '0101.txt'}
+    visible = ['0051.txt', '0060.txt', '0070.txt']   # หน้า 2
+    # ยกเลิก 0060 ติ๊ก 0070 — ไฟล์หน้าอื่น (0001, 0101) ต้องคงอยู่
+    merged = mc.merge_page_selection(selected, visible, {'0070.txt'})
+    assert merged == {'0001.txt', '0101.txt', '0070.txt'}
+
+
+def test_merge_page_selection_ignores_checked_outside_page():
+    assert mc.merge_page_selection(set(), ['a'], {'a', 'b'}) == {'a'}
+
 
 if __name__ == '__main__':
     import inspect

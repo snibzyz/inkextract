@@ -1029,11 +1029,12 @@ def primary_button(label: str, *, help: Optional[str] = None, key: Optional[str]
 
 
 def secondary_button(label: str, *, help: Optional[str] = None, key: Optional[str] = None,
-                     disabled: bool = False, width: str = "stretch") -> bool:
-    """ปุ่มรอง"""
+                     disabled: bool = False, width: str = "stretch",
+                     on_click=None, args: Optional[tuple] = None) -> bool:
+    """ปุ่มรอง — on_click รันก่อน rerun (ไม่ต้อง st.rerun() ที่ตัดรอบกลางคัน)"""
     return st.button(
         label, type="secondary", help=help, key=key,
-        disabled=disabled, width=width,
+        disabled=disabled, width=width, on_click=on_click, args=args,
     )
 
 

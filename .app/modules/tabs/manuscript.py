@@ -56,16 +56,19 @@ def _chk_key(filename: str) -> str:
     return f"ms_chk_{filename}"
 
 
-def _set_all_checkboxes(scan, value: bool) -> None:
-    """ปรับ widget-state ของ checkbox ทุกตัว — ใช้ก่อน st.rerun()"""
-    for e in scan.files:
-        st.session_state[_chk_key(e.filename)] = value
+def _set_selection(filenames: set) -> None:
+    """ตั้งรายการที่เลือก แล้วล้าง widget-state ของ checkbox — เรียกเป็น on_click ของปุ่ม
+
+    checkbox มีแค่ของหน้าที่แสดงอยู่ (แบ่งหน้า) → rerun ถัดไป _render_explorer ตั้งค่าใหม่จาก manuscript_selected
+    """
+    st.session_state['manuscript_selected'] = set(filenames)
+    for k in [k for k in st.session_state.keys() if str(k).startswith('ms_chk_')]:
+        del st.session_state[k]
 
 
-def _select_only(scan, filenames: set) -> None:
-    """ตั้งให้ checkbox เป็น True เฉพาะรายชื่อนี้"""
-    for e in scan.files:
-        st.session_state[_chk_key(e.filename)] = e.filename in filenames
+def _page_label(total: int, page: int) -> str:
+    start, end = manuscript_checker.page_bounds(page, total)
+    return f"ไฟล์ {start + 1:,}–{end:,} จาก {total:,}"
 
 
 # ============================================================
@@ -96,37 +99,36 @@ def _render_folder_bar(folder_default: str):
 
 
 def _render_action_bar(scan, selected: set):
-    """ปุ่ม bulk-select + Process — ปรับ widget-state ของ checkbox โดยตรง"""
+    """ปุ่ม bulk-select + Process
+
+    ปุ่มเลือก/ล้างใช้ on_click (รันก่อน rerun) — ห้าม st.rerun() ตรงนี้: รอบถูกตัดก่อนถึงรายการไฟล์
+    → Streamlit ทิ้ง state ของ widget ด้านล่าง (ช่องค้นหา/หน้า) แต่ browser ยังแสดงค่าเดิม
+    """
     cols = st.columns([1.5, 1.5, 1.3, 0.9, 1.6])
 
     with cols[0]:
-        if ui.secondary_button(
+        ui.secondary_button(
         "เลือกไฟล์ขนาดเล็ก",
             help="ติ๊กเฉพาะไฟล์ที่ถูกเน้นสีแดง",
             key="ms_select_small",
-        ):
-            small = {e.filename for e in scan.files if e.is_small}
-            _select_only(scan, small)
-            st.session_state['manuscript_selected'] = small
-            st.rerun()
+            on_click=_set_selection,
+            args=({e.filename for e in scan.files if e.is_small},),
+        )
 
     with cols[1]:
         all_selected = bool(selected) and len(selected) == scan.total_files
         label = "ยกเลิกทั้งหมด" if all_selected else "เลือกทั้งหมด"
-        if ui.secondary_button(label, help="สลับเลือก/ยกเลิกทุกไฟล์", key="ms_select_all"):
-            if all_selected:
-                _set_all_checkboxes(scan, False)
-                st.session_state['manuscript_selected'] = set()
-            else:
-                _set_all_checkboxes(scan, True)
-                st.session_state['manuscript_selected'] = {e.filename for e in scan.files}
-            st.rerun()
+        ui.secondary_button(
+            label, help="สลับเลือก/ยกเลิกทุกไฟล์", key="ms_select_all",
+            on_click=_set_selection,
+            args=(set() if all_selected else {e.filename for e in scan.files},),
+        )
 
     with cols[2]:
-        if ui.secondary_button("ล้างเลือก", help="เคลียร์การเลือกทั้งหมด", key="ms_clear_sel"):
-            _set_all_checkboxes(scan, False)
-            st.session_state['manuscript_selected'] = set()
-            st.rerun()
+        ui.secondary_button(
+            "ล้างเลือก", help="เคลียร์การเลือกทั้งหมด", key="ms_clear_sel",
+            on_click=_set_selection, args=(set(),),
+        )
 
     with cols[3]:
         st.markdown(
@@ -180,18 +182,50 @@ def _render_explorer(scan, sorted_entries, selected: set):
         ui.warning("ไม่พบไฟล์ตามคำค้น")
         return list_entries
 
+    # แบ่งหน้า — render ทีละ EXPLORER_PAGE_SIZE ไฟล์ (หลายพันตอนพร้อมกัน = หน้าเว็บค้าง)
+    # หน้าปัจจุบันเก็บที่ manuscript_page — state ของ widget 'ms_page' หายได้เมื่อ rerun ถูกตัด
+    # ก่อนถึง widget (ปุ่มเลือก/ล้างอยู่เหนือรายการแล้ว st.rerun()) → ตั้งคืนผ่าน Session State API
+    total = len(list_entries)
+    pages = manuscript_checker.page_count(total)
+    page = st.session_state.get('manuscript_page', 0)
+    force = False
+    jump = st.session_state.pop('ms_page_jump', None)  # ▲▼ พรีวิวกระโดดไปไฟล์ในหน้าอื่น
+    if jump is not None:
+        idx = next((i for i, e in enumerate(list_entries) if e.filename == jump), None)
+        if idx is not None:
+            page, force = manuscript_checker.page_of_index(idx), True
+    if not 0 <= page < pages:
+        page, force = 0, True
+    if pages > 1:
+        if force or not 0 <= st.session_state.get('ms_page', -1) < pages:
+            st.session_state['ms_page'] = page
+        page = st.selectbox(
+            "ช่วงไฟล์",
+            options=list(range(pages)),
+            format_func=lambda p: _page_label(total, p),
+            key="ms_page",
+            label_visibility="collapsed",
+        )
+    st.session_state['manuscript_page'] = page
+    start, end = manuscript_checker.page_bounds(page, total)
+    page_entries = list_entries[start:end]
+
+    # ตั้งค่า checkbox จาก manuscript_selected ผ่าน Session State API ก่อนสร้าง widget
+    # (ส่ง value= อย่างเดียว browser ไม่อัปเดต checkbox ที่แสดงอยู่แล้ว เช่น หลังกด 'เลือกทั้งหมด')
+    for e in page_entries:
+        if _chk_key(e.filename) not in st.session_state:
+            st.session_state[_chk_key(e.filename)] = e.filename in selected
+
     # scrollable list container
     with st.container(height=560, border=True):
-        for e in list_entries:
+        for e in page_entries:
             row = st.columns([0.12, 1])
             # checkbox สำหรับเลือกลบ
             with row[0]:
                 st.checkbox(
                 "เลือกลบ",
-                    value=(e.filename in selected),
                     key=_chk_key(e.filename),
                     label_visibility="collapsed",
-                    help="ติ๊ก = เลือกไฟล์นี้ไปประมวลผล (ลบ + renumber)",
                 )
             # ปุ่มแสดง filename + size + small indicator
             with row[1]:
@@ -204,16 +238,16 @@ def _render_explorer(scan, sorted_entries, selected: set):
                     key=f"ms_open_{e.filename}",
                     width="stretch",
                     type=("primary" if is_active else "secondary"),
-                    help="คลิกเพื่อพรีวิวเนื้อหา",
                 ):
                     st.session_state['manuscript_preview'] = e.filename
                     st.rerun()
 
-    # ===== sync widget-state → selected set =====
-    new_selected = {
-        e.filename for e in scan.files
-        if st.session_state.get(_chk_key(e.filename))
-    }
+    # ===== sync widget-state → selected set (เฉพาะไฟล์ในหน้านี้ · หน้าอื่น/ที่ค้นไม่เจอคงค่าเดิม) =====
+    visible = [e.filename for e in page_entries]
+    new_selected = manuscript_checker.merge_page_selection(
+        selected, visible,
+        {n for n in visible if st.session_state.get(_chk_key(n))},
+    )
     if new_selected != selected:
         st.session_state['manuscript_selected'] = new_selected
         st.rerun()
@@ -269,6 +303,7 @@ def _render_preview(scan, sorted_entries):
             idx = _prev_small(current_idx)
             if idx is not None:
                 st.session_state['manuscript_preview'] = sorted_entries[idx].filename
+                st.session_state['ms_page_jump'] = sorted_entries[idx].filename
                 st.rerun()
     with head[2]:
         if st.button(
@@ -280,6 +315,7 @@ def _render_preview(scan, sorted_entries):
             idx = _next_small(current_idx)
             if idx is not None:
                 st.session_state['manuscript_preview'] = sorted_entries[idx].filename
+                st.session_state['ms_page_jump'] = sorted_entries[idx].filename
                 st.rerun()
 
     if preview_name:
@@ -376,6 +412,7 @@ def render() -> None:
                     del st.session_state[k]
             st.session_state['manuscript_selected'] = set()
             st.session_state.pop('manuscript_preview', None)
+            st.session_state.pop('manuscript_page', None)
 
     scan = st.session_state['manuscript_scan']
 

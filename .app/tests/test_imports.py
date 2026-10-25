@@ -67,6 +67,12 @@ def test_no_module_exceeds_threshold():
     assert not hard, f"hard limit exceeded: {hard}"
 
 
+def test_streamlit_compat_noop_outside_runtime():
+    """เรียกนอก streamlit run ต้องไม่ throw (ไม่มี session → ข้ามขั้น session ปัจจุบัน)"""
+    from modules.streamlit_compat import raise_ws_send_queue_limit
+    assert isinstance(raise_ws_send_queue_limit(), bool)
+
+
 if __name__ == '__main__':
     import inspect
     tests = [(n, f) for n, f in inspect.getmembers(sys.modules[__name__])
